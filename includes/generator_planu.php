@@ -77,8 +77,8 @@ class GeneratorPlanu {
                     
                     // Sprawdzamy czy nauczyciel jest dostępny
                     if ($this->sprawdzDostepnoscNauczyciela($przedmiot['nauczyciel_id'], $dzien, $lekcja_nr, $klasa_id)) {
-                        // Pobieramy salę
-                        $sala_id = $this->przydzielSale($dzien, $lekcja_nr, $klasa_id);
+                        // Pobieramy salę (z uwzględnieniem preferencji dla przedmiotu i nauczyciela)
+                        $sala_id = $this->przydzielSale($dzien, $lekcja_nr, $klasa_id, $przedmiot['przedmiot_id'], $przedmiot['nauczyciel_id']);
                         
                         // Obliczamy godziny
                         $godziny = $this->obliczGodziny($lekcja_nr);
@@ -127,27 +127,83 @@ class GeneratorPlanu {
         return $row['count'] == 0;
     }
     
-    // Przydzielanie sali
-    private function przydzielSale($dzien, $lekcja_nr, $klasa_id) {
-        // Prosta implementacja - pobieramy pierwszą wolną salę
+    // Przydzielanie sali z uwzględnieniem preferencji dla przedmiotu i nauczyciela
+    private function przydzielSale($dzien, $lekcja_nr, $klasa_id, $przedmiot_id = null, $nauczyciel_id = null) {
+        // Lista zajętych sal w tym terminie
+        $zajete_sale_query = "
+            SELECT sala_id
+            FROM plan_lekcji
+            WHERE dzien_tygodnia = '$dzien'
+            AND numer_lekcji = $lekcja_nr
+            AND sala_id IS NOT NULL
+        ";
+
+        // Priorytet 1: Sala przypisana zarówno do przedmiotu JAK I nauczyciela
+        if ($przedmiot_id && $nauczyciel_id) {
+            $result = $this->conn->query("
+                SELECT s.id
+                FROM sale s
+                INNER JOIN sala_przedmioty sp ON s.id = sp.sala_id
+                INNER JOIN sala_nauczyciele sn ON s.id = sn.sala_id
+                WHERE sp.przedmiot_id = $przedmiot_id
+                AND sn.nauczyciel_id = $nauczyciel_id
+                AND s.id NOT IN ($zajete_sale_query)
+                LIMIT 1
+            ");
+
+            if ($result && $result->num_rows > 0) {
+                $row = $result->fetch_assoc();
+                return $row['id'];
+            }
+        }
+
+        // Priorytet 2: Sala przypisana do przedmiotu
+        if ($przedmiot_id) {
+            $result = $this->conn->query("
+                SELECT s.id
+                FROM sale s
+                INNER JOIN sala_przedmioty sp ON s.id = sp.sala_id
+                WHERE sp.przedmiot_id = $przedmiot_id
+                AND s.id NOT IN ($zajete_sale_query)
+                LIMIT 1
+            ");
+
+            if ($result && $result->num_rows > 0) {
+                $row = $result->fetch_assoc();
+                return $row['id'];
+            }
+        }
+
+        // Priorytet 3: Sala przypisana do nauczyciela
+        if ($nauczyciel_id) {
+            $result = $this->conn->query("
+                SELECT s.id
+                FROM sale s
+                INNER JOIN sala_nauczyciele sn ON s.id = sn.sala_id
+                WHERE sn.nauczyciel_id = $nauczyciel_id
+                AND s.id NOT IN ($zajete_sale_query)
+                LIMIT 1
+            ");
+
+            if ($result && $result->num_rows > 0) {
+                $row = $result->fetch_assoc();
+                return $row['id'];
+            }
+        }
+
+        // Priorytet 4 (fallback): Dowolna wolna sala
         $result = $this->conn->query("
             SELECT s.id
             FROM sale s
-            WHERE s.id NOT IN (
-                SELECT sala_id 
-                FROM plan_lekcji 
-                WHERE dzien_tygodnia = '$dzien' 
-                AND numer_lekcji = $lekcja_nr
-                AND sala_id IS NOT NULL
-            )
+            WHERE s.id NOT IN ($zajete_sale_query)
             LIMIT 1
         ");
-        
-        if ($result->num_rows > 0) {
+
+        if ($result && $result->num_rows > 0) {
             $row = $result->fetch_assoc();
             return $row['id'];
         }
-        
+
         return null;
     }
     
