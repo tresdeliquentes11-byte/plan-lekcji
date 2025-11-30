@@ -5,11 +5,12 @@
 Kompleksowy system zarządzania planem lekcji dla szkół, napisany w PHP z wykorzystaniem bazy danych MySQL. System umożliwia:
 
 - Automatyczne generowanie planu lekcji dla wszystkich klas
-- Zarządzanie zastępstwami za nieobecnych nauczycieli
+- Zarządzanie i dodanie zastępstw za nieobecnych nauczycieli
 - Przeglądanie planu przez uczniów, nauczycieli i dyrekcję
 - Zarządzanie kalendarzem dni wolnych
 - Przypisywanie nauczycieli do przedmiotów i klas
 - Zarządzanie rozszerzeniami dla poszczególnych klas
+- Zarządzanie salami lekcyjnymi, przypisanie nauczycieli i przedmiotów.
 
 ## Wymagania systemowe
 
@@ -18,7 +19,7 @@ Kompleksowy system zarządzania planem lekcji dla szkół, napisany w PHP z wyko
 - Serwer web (Apache/Nginx)
 - Włączone rozszerzenia PHP: mysqli, session
 
-## Instalacja
+## Instalacja (Po dokładne instrukcje zajrzyj do INSTALACJA.md)
 
 ### 1. Przygotowanie bazy danych
 
@@ -118,12 +119,11 @@ Po instalacji dostępne są następujące konta testowe:
 
 System automatycznie generuje plan według algorytmu, który:
 
-1. Równomiernie rozkłada przedmioty w ciągu tygodnia
+1. Rozkłada przedmioty w ciągu tygodnia
 2. Unika nakładania się sal (jedna sala = jedna klasa w danym czasie)
-3. Eliminuje okienka - lekcje bez przerw
-4. Sprawdza dostępność nauczycieli (jeden nauczyciel może uczyć tylko jedną klasę w danym czasie)
-5. Generuje plan na cały rok szkolny (wrzesień - czerwiec)
-6. Uwzględnia dni wolne z kalendarza
+3. Sprawdza dostępność nauczycieli (jeden nauczyciel może uczyć tylko jedną klasę w danym czasie)
+4. Generuje plan na cały rok szkolny (wrzesień - czerwiec)
+5. Uwzględnia dni wolne z kalendarza
 
 **Jak wygenerować plan:**
 
@@ -227,7 +227,7 @@ Domyślnie system zawiera 12 klas:
 Klasy 1-3 mają domyślnie 7 godzin dziennie.
 Klasy 4 mają domyślnie 8 godzin dziennie.
 
-## Rozwiązywanie problemów
+## Rozwiązywanie problemów 
 
 ### Plan nie generuje się poprawnie
 
@@ -247,6 +247,11 @@ Klasy 4 mają domyślnie 8 godzin dziennie.
 1. Sprawdź parametry w pliku `includes/config.php`
 2. Upewnij się, że baza danych została utworzona
 3. Sprawdź uprawnienia użytkownika MySQL
+
+### Jeśli masz problemy z logowaniem
+
+Sprawdź PROBLEMY_LOGOWANIE.md.
+System ma narzędia do diagnostyki i naprawy aplikacji.
 
 ## Bezpieczeństwo
 
