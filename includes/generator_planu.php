@@ -211,7 +211,6 @@ class GeneratorPlanu {
     private function obliczGodziny($numer_lekcji) {
         $start_timestamp = strtotime($this->godzina_rozpoczecia);
         
-        // Każda lekcja + przerwa to 55 minut (45 + 10)
         $minutes_offset = ($numer_lekcji - 1) * ($this->czas_lekcji + $this->czas_przerwy);
         
         $start = date('H:i:s', strtotime("+$minutes_offset minutes", $start_timestamp));
@@ -222,7 +221,6 @@ class GeneratorPlanu {
     
     // Generowanie planu dziennego na cały rok szkolny
     public function generujPlanRoczny() {
-        // Rok szkolny: 1 września - 30 czerwca
         $rok_biezacy = date('Y');
         $rok_nastepny = $rok_biezacy + 1;
         
