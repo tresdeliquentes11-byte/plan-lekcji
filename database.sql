@@ -75,11 +75,13 @@ CREATE TABLE klasa_przedmioty (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Tabela sal
-CREATE TABLE sale (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    numer VARCHAR(20) UNIQUE NOT NULL,
-    nazwa VARCHAR(100)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE `sale` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `numer` varchar(20) NOT NULL,
+  `nazwa` varchar(100) DEFAULT NULL,
+  `typ` enum('standardowa','pracownia','sportowa','specjalna') DEFAULT 'standardowa',
+  `pojemnosc` int(11) DEFAULT 30
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- Tabela dni wolnych i świąt
 CREATE TABLE dni_wolne (
@@ -155,14 +157,14 @@ CREATE TABLE zastepstwa (
 
 -- Tabela nauczyciel do sali
 CREATE TABLE `sala_nauczyciele` (
-  `id` int(11) NOT NULL,
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
   `sala_id` int(11) NOT NULL,
   `nauczyciel_id` int(11) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- Tabela przedmiot do sali
 CREATE TABLE `sala_przedmioty` (
-  `id` int(11) NOT NULL,
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
   `sala_id` int(11) NOT NULL,
   `przedmiot_id` int(11) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
@@ -204,14 +206,14 @@ INSERT INTO uzytkownicy (login, haslo, typ, imie, nazwisko, email) VALUES
 ('admin', '$2y$10$vT9B2nX8cQ7fM6gR5jK4sL.aP3bY1eU4wO8zD9hN6iC2mF5tE7kA1', 'administrator', 'Anna', 'Nowak', 'admin@szkola.pl');
 
 -- Przykładowe sale
-INSERT INTO sale (numer, nazwa) VALUES
-('101', 'Sala matematyczna'),
-('102', 'Sala językowa'),
-('103', 'Sala polonistyczna'),
-('104', 'Sala historyczna'),
-('105', 'Sala geograficzna'),
-('201', 'Pracownia fizyczna'),
-('202', 'Pracownia chemiczna'),
-('203', 'Pracownia biologiczna'),
-('204', 'Pracownia informatyczna'),
-('SALA-WF', 'Sala gimnastyczna');
+INSERT INTO sale (numer, nazwa, typ) VALUES
+('101', 'Sala matematyczna', 'standardowa'),
+('102', 'Sala językowa', 'standardowa'),
+('103', 'Sala polonistyczna', 'standardowa'),
+('104', 'Sala historyczna', 'standardowa'),
+('105', 'Sala geograficzna', 'standardowa'),
+('201', 'Pracownia fizyczna', 'pracownia'),
+('202', 'Pracownia chemiczna', 'pracownia'),
+('203', 'Pracownia biologiczna', 'pracownia'),
+('204', 'Pracownia informatyczna', 'pracownia'),
+('SALA-WF', 'Sala gimnastyczna', 'sportowa');
