@@ -32,11 +32,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['przypisz_przedmioty']
     // Dodaj nowe przypisania
     $liczba_przypisanych = 0;
     foreach ($_POST['przedmioty'] as $przedmiot_id => $dane) {
-        // Sprawdź czy nauczyciel jest wybrany I liczba godzin jest większa od 0
-        if (!empty($dane['nauczyciel_id']) && isset($dane['godziny']) && $dane['godziny'] > 0) {
+        // Sprawdź czy nauczyciel jest wybrany I liczba godzin jest >= 0
+        if (!empty($dane['nauczyciel_id']) && isset($dane['godziny']) && $dane['godziny'] >= 0) {
             $nauczyciel_id = intval($dane['nauczyciel_id']);
             $godziny = intval($dane['godziny']);
-            
+
             $stmt = $conn->prepare("INSERT INTO klasa_przedmioty (klasa_id, przedmiot_id, nauczyciel_id, ilosc_godzin_tydzien) VALUES (?, ?, ?, ?)");
             $stmt->bind_param("iiii", $klasa_id, $przedmiot_id, $nauczyciel_id, $godziny);
             if ($stmt->execute()) {
@@ -44,12 +44,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['przypisz_przedmioty']
             }
         }
     }
-    
+
     if ($liczba_przypisanych > 0) {
         $message = "Zapisano {$liczba_przypisanych} przedmiotów dla klasy";
         $message_type = 'success';
     } else {
-        $message = 'Nie przypisano żadnych przedmiotów. Upewnij się że wybrałeś nauczycieli i ustawiłeś liczbę godzin > 0';
+        $message = 'Nie przypisano żadnych przedmiotów. Upewnij się że wybrałeś nauczycieli (możesz ustawić 0 godzin aby wykluczyć przedmiot)';
         $message_type = 'warning';
     }
 }
@@ -187,7 +187,11 @@ if (isset($_GET['klasa_id'])) {
                 
                 <div class="card">
                     <h3 class="card-title">Przypisz przedmioty i nauczycieli dla klasy <?php echo e($selected_klasa['nazwa']); ?></h3>
-                    
+
+                    <div class="alert alert-info">
+                        <strong>ℹ️ Wskazówka:</strong> Aby wykluczyć przedmiot z planu (np. biologia dla klasy 4), ustaw liczbę godzin na <strong>0</strong>.
+                    </div>
+
                     <?php
                     // Sprawdź czy są przedmioty bez nauczycieli
                     $przedmioty_bez_nauczycieli = [];
