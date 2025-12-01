@@ -10,11 +10,12 @@ Kompleksowy system zarządzania planem lekcji dla szkół, napisany w PHP z wyko
 - Zarządzanie kalendarzem dni wolnych
 - Przypisywanie nauczycieli do przedmiotów i klas
 - Zarządzanie rozszerzeniami dla poszczególnych klas
+- Zarządzanie salami lekcyjnymi
 
 ## Wymagania systemowe
 
-- PHP 7.4 lub nowszy
-- MySQL 5.7 lub nowszy / MariaDB 10.2 lub nowszy
+- PHP 8.2 lub nowszy
+- MySQL 9.5 lub nowszy / MariaDB 12.0 lub nowszy
 - Serwer web (Apache/Nginx)
 - Włączone rozszerzenia PHP: mysqli, session
 
