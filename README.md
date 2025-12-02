@@ -285,12 +285,15 @@ System można rozwijać o dodatkowe funkcjonalności:
 - Aplikacja mobilna
 - Powiadomienia email/SMS
 
-## Licencja i Prawa
+## Licencja i Prawa 
+
+Produkt na licencji TEUL – TresDeliquentes Educational Use License.
 
 © 2025 TresDeliquentes.
-Program LibreLessons może być używany w celach edukacyjnych.
+Oprogramowanie LibreLessons może być wykorzystywane wyłącznie w celach edukacyjnych.
 Modyfikacje są dozwolone wyłącznie na potrzeby własnej instytucji.
-Zakazane jest udostępnianie, kopiowanie lub odsprzedaż projektu.
+Zakazane jest kopiowanie, udostępnianie, publikowanie lub odsprzedaż projektu,
+w całości lub w części, bez uprzedniej pisemnej zgody właściciela.
 
 ---
 
