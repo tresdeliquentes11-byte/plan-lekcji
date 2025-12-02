@@ -108,7 +108,7 @@
 .nav-item svg {
     margin-right: 12px;
     flex-shrink: 0;
-    color: inherit !important;
+    color: black;
 }
 
 .nav-item span {
