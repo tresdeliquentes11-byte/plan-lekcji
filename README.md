@@ -1,6 +1,8 @@
 # LibreLessons - Dokumentacja
 
-## Opis projektu
+<img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/65409344-404c-41d5-a77d-fd3964a14d41" />
+
+## Opis
 
 Kompleksowy system zarządzania planem lekcji dla szkół, napisany w PHP z wykorzystaniem bazy danych MySQL. System umożliwia:
 
@@ -285,10 +287,10 @@ System można rozwijać o dodatkowe funkcjonalności:
 
 ## Licencja i Prawa
 
-© 2025 TresDeliquentes. Wszelkie prawa zastrzeżone.
-Oprogramowanie LibreLessons stanowi własność firmy TresDeliquentes.
-Zabrania się kopiowania, modyfikowania, udostępniania lub wykorzystywania
-w celach komercyjnych bez wyraźnej pisemnej zgody autora.
+© 2025 TresDeliquentes.
+Program LibreLessons może być używany w celach edukacyjnych.
+Modyfikacje są dozwolone wyłącznie na potrzeby własnej instytucji.
+Zakazane jest udostępnianie, kopiowanie lub odsprzedaż projektu.
 
 ---
 
