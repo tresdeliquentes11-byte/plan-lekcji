@@ -1,4 +1,4 @@
-# System Planu Lekcji - Dokumentacja
+# LibreLessons - Dokumentacja
 
 ## Opis projektu
 
