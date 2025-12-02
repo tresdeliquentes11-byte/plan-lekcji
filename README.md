@@ -21,7 +21,7 @@ Kompleksowy system zarządzania planem lekcji dla szkół, napisany w PHP z wyko
 - Serwer web (Apache/Nginx)
 - Włączone rozszerzenia PHP: mysqli, session
 
-## Instalacja (Po dokładniejsze instrukcje sprawdź INSTALACJA.md)
+## Instalacja
 
 ### 1. Przygotowanie bazy danych
 
