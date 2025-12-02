@@ -10,8 +10,8 @@
 
 .admin-sidebar {
     width: 280px;
-    background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
-    color: white;
+    background: linear-gradient(180deg, #667eea 0%, #764ba2 100%) !important;
+    color: white !important;
     position: fixed;
     height: 100vh;
     left: 0;
@@ -59,18 +59,21 @@
     padding: 30px 20px;
     text-align: center;
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    background: transparent !important;
 }
 
 .sidebar-header h2 {
     margin: 0 0 5px 0;
     font-size: 22px;
     font-weight: 700;
+    color: white !important;
 }
 
 .sidebar-header p {
     margin: 0;
     font-size: 13px;
     opacity: 0.8;
+    color: white !important;
 }
 
 .sidebar-nav {
@@ -81,28 +84,34 @@
     display: flex;
     align-items: center;
     padding: 12px 25px;
-    color: rgba(255, 255, 255, 0.9);
+    color: rgba(255, 255, 255, 0.9) !important;
     text-decoration: none;
     transition: all 0.3s ease;
     border-left: 3px solid transparent;
+    background: transparent !important;
 }
 
 .nav-item:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: white;
-    border-left-color: white;
+    background: rgba(255, 255, 255, 0.1) !important;
+    color: white !important;
+    border-left-color: white !important;
 }
 
 .nav-item.active {
-    background: rgba(255, 255, 255, 0.15);
-    color: white;
-    border-left-color: white;
+    background: rgba(255, 255, 255, 0.15) !important;
+    color: white !important;
+    border-left-color: white !important;
     font-weight: 600;
 }
 
 .nav-item svg {
     margin-right: 12px;
     flex-shrink: 0;
+    color: white !important;
+}
+
+.nav-item span {
+    color: inherit !important;
 }
 
 .nav-separator {
@@ -112,6 +121,8 @@
     text-transform: uppercase;
     letter-spacing: 1px;
     opacity: 0.6;
+    color: white !important;
+    background: transparent !important;
 }
 
 .sidebar-footer {
@@ -125,15 +136,20 @@
     align-items: center;
     justify-content: center;
     padding: 12px;
-    background: rgba(255, 255, 255, 0.1);
-    color: white;
+    background: rgba(255, 255, 255, 0.1) !important;
+    color: white !important;
     text-decoration: none;
     border-radius: 8px;
     transition: all 0.3s ease;
 }
 
 .btn-logout-sidebar:hover {
-    background: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.2) !important;
+    color: white !important;
+}
+
+.btn-logout-sidebar span {
+    color: white !important;
 }
 
 .btn-logout-sidebar svg {
