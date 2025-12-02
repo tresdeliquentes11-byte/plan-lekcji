@@ -283,10 +283,13 @@ System można rozwijać o dodatkowe funkcjonalności:
 - Aplikacja mobilna
 - Powiadomienia email/SMS
 
-## Licencja
+## Licencja i Prawa
 
-Ten system został stworzony na potrzeby edukacyjne. Możesz go swobodnie modyfikować i dostosowywać do swoich potrzeb.
+© 2025 TresDeliquentes. Wszelkie prawa zastrzeżone.
+Oprogramowanie LibreLessons stanowi własność firmy TresDeliquentes.
+Zabrania się kopiowania, modyfikowania, udostępniania lub wykorzystywania
+w celach komercyjnych bez wyraźnej pisemnej zgody autora.
 
 ---
 
-Ostatnia aktualizacja: Listopad 2024
+Ostatnia aktualizacja: Grudzień 2025
