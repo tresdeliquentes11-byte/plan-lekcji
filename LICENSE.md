@@ -50,7 +50,7 @@ TresDeliquentes nie ponosi odpowiedzialności za:
 Aby uzyskać rozszerzoną licencję, zgodę na publikację, dystrybucję lub użycie komercyjne, skontaktuj się:
 
 **TresDeliquentes**  
-Email: *[tu możesz dodać firmowy kontakt]*
+Email: *tresdeliquentes11@gmail.com*
 
 ---
 
