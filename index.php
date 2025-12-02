@@ -1,28 +1,33 @@
 <?php
 require_once 'includes/config.php';
+require_once 'includes/admin_functions.php';
 
 $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $login = $_POST['login'] ?? '';
     $haslo = $_POST['haslo'] ?? '';
-    
+
     if ($login && $haslo) {
         $stmt = $conn->prepare("SELECT id, login, haslo, typ, imie, nazwisko FROM uzytkownicy WHERE login = ? AND aktywny = 1");
         $stmt->bind_param("s", $login);
         $stmt->execute();
         $result = $stmt->get_result();
-        
+
         if ($result->num_rows === 1) {
             $user = $result->fetch_assoc();
-            
-            // Weryfikacja hasła (dla uproszczenia używam prostego porównania, w produkcji używaj password_verify)
+
+            // Weryfikacja hasła
             if (password_verify($haslo, $user['haslo'])) {
                 $_SESSION['user_id'] = $user['id'];
                 $_SESSION['user_login'] = $user['login'];
                 $_SESSION['user_type'] = $user['typ'];
                 $_SESSION['user_name'] = $user['imie'] . ' ' . $user['nazwisko'];
-                
+
+                // Zarządzaj sesją i loguj aktywność
+                zarzadzaj_sesja($user['id'], 'login');
+                loguj_aktywnosc($user['id'], 'logowanie', "Użytkownik {$user['login']} zalogował się do systemu");
+
                 // Przekierowanie w zależności od typu użytkownika
                 switch ($user['typ']) {
                     case 'dyrektor':
@@ -41,9 +46,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 exit();
             } else {
                 $error = 'Nieprawidłowy login lub hasło';
+                // Loguj nieudaną próbę logowania
+                loguj_aktywnosc(null, 'nieudane_logowanie', "Nieudana próba logowania dla loginu: $login");
             }
         } else {
-            $error = 'Nieprawidłowy login lub hasło';
+            // Sprawdź czy użytkownik istnieje ale jest zablokowany
+            $stmt2 = $conn->prepare("SELECT id FROM uzytkownicy WHERE login = ? AND aktywny = 0");
+            $stmt2->bind_param("s", $login);
+            $stmt2->execute();
+            $result2 = $stmt2->get_result();
+
+            if ($result2->num_rows === 1) {
+                $error = 'Konto zostało zablokowane. Skontaktuj się z administratorem.';
+            } else {
+                $error = 'Nieprawidłowy login lub hasło';
+            }
+            $stmt2->close();
         }
         $stmt->close();
     } else {
