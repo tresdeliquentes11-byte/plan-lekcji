@@ -1,20 +1,22 @@
 <?php
 require_once '../includes/config.php';
-sprawdz_uprawnienia('uczen');
+sprawdz_uprawnienia('nauczyciel');
 
-// Pobierz klasę ucznia
-$uczen = $conn->query("
-    SELECT k.* FROM uczniowie u
-    JOIN klasy k ON u.klasa_id = k.id
-    WHERE u.uzytkownik_id = {$_SESSION['user_id']}
-")->fetch_assoc();
+// Pobierz ID nauczyciela
+$nauczyciel_result = $conn->query("
+    SELECT n.id, u.imie, u.nazwisko
+    FROM nauczyciele n
+    JOIN uzytkownicy u ON n.uzytkownik_id = u.id
+    WHERE n.uzytkownik_id = {$_SESSION['user_id']}
+");
 
-if (!$uczen) {
-    die("Błąd: Uczeń nie jest przypisany do żadnej klasy");
+if ($nauczyciel_result->num_rows === 0) {
+    die("Błąd: Nie znaleziono danych nauczyciela");
 }
 
-$klasa_id = $uczen['id'];
-$klasa_nazwa = $uczen['nazwa'];
+$nauczyciel = $nauczyciel_result->fetch_assoc();
+$nauczyciel_id = $nauczyciel['id'];
+$nauczyciel_imie_nazwisko = $nauczyciel['imie'] . ' ' . $nauczyciel['nazwisko'];
 
 // Pobierz tydzień
 $tydzien_offset = intval($_GET['tydzien'] ?? 0);
@@ -38,27 +40,28 @@ $piatek_docelowy->modify('+4 days');
 $poczatek_tygodnia = $poniedzialek_docelowy->format('Y-m-d');
 $koniec_tygodnia = $piatek_docelowy->format('Y-m-d');
 
-// Pobierz plan
+// Pobierz plan nauczyciela
 $plan_query = $conn->query("
     SELECT pd.*, p.nazwa as przedmiot, p.skrot,
-           u.imie, u.nazwisko, s.numer as sala,
+           k.nazwa as klasa, s.numer as sala,
            pd.czy_zastepstwo
     FROM plan_dzienny pd
     JOIN przedmioty p ON pd.przedmiot_id = p.id
-    JOIN nauczyciele n ON pd.nauczyciel_id = n.id
-    JOIN uzytkownicy u ON n.uzytkownik_id = u.id
+    JOIN klasy k ON pd.klasa_id = k.id
     LEFT JOIN sale s ON pd.sala_id = s.id
-    WHERE pd.klasa_id = $klasa_id
+    WHERE pd.nauczyciel_id = $nauczyciel_id
     AND pd.data >= '$poczatek_tygodnia'
     AND pd.data <= '$koniec_tygodnia'
     ORDER BY pd.data, pd.numer_lekcji
 ");
 
 $plan = [];
+$liczba_lekcji = 0;
 while ($lekcja = $plan_query->fetch_assoc()) {
     $data = $lekcja['data'];
     $numer = $lekcja['numer_lekcji'];
     $plan[$data][$numer] = $lekcja;
+    $liczba_lekcji++;
 }
 
 $dni_tygodnia = [
@@ -74,22 +77,22 @@ $dni_tygodnia = [
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Plan Lekcji - Klasa <?php echo e($klasa_nazwa); ?></title>
+    <title>Plan Lekcji - Nauczyciel</title>
     <link rel="stylesheet" href="../css/style.css">
     <link rel="stylesheet" href="../css/admin.css">
     <style>
-        .student-layout {
+        .teacher-layout {
             min-height: 100vh;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
             padding: 20px;
         }
 
-        .student-container {
+        .teacher-container {
             max-width: 1400px;
             margin: 0 auto;
         }
 
-        .student-header {
+        .teacher-header {
             background: white;
             border-radius: 15px;
             padding: 25px 35px;
@@ -100,7 +103,7 @@ $dni_tygodnia = [
             align-items: center;
         }
 
-        .student-header h1 {
+        .teacher-header h1 {
             margin: 0;
             font-size: 28px;
             color: #2c3e50;
@@ -109,12 +112,12 @@ $dni_tygodnia = [
             gap: 15px;
         }
 
-        .class-badge {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        .teacher-badge {
+            background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
             color: white;
             padding: 8px 20px;
             border-radius: 25px;
-            font-size: 18px;
+            font-size: 16px;
             font-weight: 600;
         }
 
@@ -144,6 +147,34 @@ $dni_tygodnia = [
             transform: translateY(-2px);
         }
 
+        .stats-bar {
+            background: white;
+            border-radius: 15px;
+            padding: 20px 30px;
+            margin-bottom: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 40px;
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-item .number {
+            font-size: 32px;
+            font-weight: 700;
+            color: #fa709a;
+        }
+
+        .stat-item .label {
+            font-size: 14px;
+            color: #6c757d;
+            margin-top: 5px;
+        }
+
         .plan-card {
             background: white;
             border-radius: 15px;
@@ -161,7 +192,7 @@ $dni_tygodnia = [
         }
 
         .week-navigation button {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
             color: white;
             border: none;
             padding: 12px 24px;
@@ -174,7 +205,7 @@ $dni_tygodnia = [
 
         .week-navigation button:hover {
             transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+            box-shadow: 0 5px 15px rgba(250, 112, 154, 0.4);
         }
 
         .current-week {
@@ -194,7 +225,7 @@ $dni_tygodnia = [
         }
 
         .timetable th {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
             color: white;
             padding: 15px;
             text-align: center;
@@ -251,7 +282,7 @@ $dni_tygodnia = [
 
         .lesson-card {
             background: white;
-            border-left: 4px solid #667eea;
+            border-left: 4px solid #fa709a;
             border-radius: 8px;
             padding: 12px;
             min-height: 75px;
@@ -276,15 +307,11 @@ $dni_tygodnia = [
             margin-bottom: 6px;
         }
 
-        .lesson-teacher {
-            font-size: 12px;
-            color: #6c757d;
-            margin-bottom: 4px;
-        }
-
-        .lesson-teacher small {
-            color: #f39c12;
+        .lesson-class {
+            font-size: 13px;
+            color: #fa709a;
             font-weight: 600;
+            margin-bottom: 4px;
         }
 
         .lesson-room {
@@ -294,17 +321,33 @@ $dni_tygodnia = [
             font-weight: 500;
         }
 
+        .zastepstwo-badge {
+            display: inline-block;
+            background: #f39c12;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 600;
+            margin-top: 4px;
+        }
+
         @media (max-width: 768px) {
-            .student-header {
+            .teacher-header {
                 flex-direction: column;
                 gap: 15px;
                 padding: 20px;
             }
 
-            .student-header h1 {
+            .teacher-header h1 {
                 font-size: 20px;
                 flex-direction: column;
                 text-align: center;
+            }
+
+            .stats-bar {
+                flex-direction: column;
+                gap: 20px;
             }
 
             .week-navigation {
@@ -329,22 +372,33 @@ $dni_tygodnia = [
     </style>
 </head>
 <body>
-    <div class="student-layout">
-        <div class="student-container">
-            <header class="student-header">
+    <div class="teacher-layout">
+        <div class="teacher-container">
+            <header class="teacher-header">
                 <h1>
                     <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
-                        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+                        <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
+                        <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
                     </svg>
                     Plan Lekcji
-                    <span class="class-badge">Klasa <?php echo e($klasa_nazwa); ?></span>
+                    <span class="teacher-badge">Nauczyciel</span>
                 </h1>
                 <div class="user-info">
-                    <span>👤 <?php echo e($_SESSION['user_name']); ?></span>
+                    <span>👨‍🏫 <?php echo e($_SESSION['user_name']); ?></span>
                     <a href="../logout.php" class="btn-logout">Wyloguj</a>
                 </div>
             </header>
+
+            <div class="stats-bar">
+                <div class="stat-item">
+                    <div class="number"><?php echo $liczba_lekcji; ?></div>
+                    <div class="label">Lekcji w tym tygodniu</div>
+                </div>
+                <div class="stat-item">
+                    <div class="number"><?php echo count(array_filter($plan, function($dzien) { return !empty($dzien); })); ?></div>
+                    <div class="label">Dni z zajęciami</div>
+                </div>
+            </div>
 
             <div class="plan-card">
                 <div class="week-navigation">
@@ -389,14 +443,14 @@ $dni_tygodnia = [
                                                 <?php $l = $plan[$data][$lekcja_nr]; ?>
                                                 <div class="lesson-card <?php echo $l['czy_zastepstwo'] ? 'zastepstwo' : ''; ?>">
                                                     <div class="lesson-subject"><?php echo e($l['przedmiot']); ?></div>
-                                                    <div class="lesson-teacher">
-                                                        <?php echo e($l['imie'] . ' ' . $l['nazwisko']); ?>
-                                                        <?php if ($l['czy_zastepstwo']): ?>
-                                                            <br><small>⚠️ ZASTĘPSTWO</small>
-                                                        <?php endif; ?>
+                                                    <div class="lesson-class">
+                                                        🎓 Klasa <?php echo e($l['klasa']); ?>
                                                     </div>
                                                     <?php if ($l['sala']): ?>
                                                         <div class="lesson-room">📍 Sala: <?php echo e($l['sala']); ?></div>
+                                                    <?php endif; ?>
+                                                    <?php if ($l['czy_zastepstwo']): ?>
+                                                        <span class="zastepstwo-badge">⚠️ ZASTĘPSTWO</span>
                                                     <?php endif; ?>
                                                 </div>
                                             <?php endif; ?>
