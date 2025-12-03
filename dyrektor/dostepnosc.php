@@ -65,7 +65,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['zapisz'])) {
         $conn->commit();
         $message = 'Godziny pracy zostały zapisane pomyślnie';
         $message_type = 'success';
-        loguj_aktywnosc($conn, $_SESSION['user_id'], 'edycja', 'godziny_pracy', "Zaktualizowano godziny pracy nauczyciela ID: $nauczyciel_id");
+        loguj_aktywnosc($_SESSION['user_id'], 'edycja', "Zaktualizowano godziny pracy nauczyciela ID: $nauczyciel_id");
     } catch (Exception $e) {
         $conn->rollback();
         $message = 'Błąd podczas zapisywania: ' . $e->getMessage();
