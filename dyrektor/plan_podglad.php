@@ -25,9 +25,12 @@ function pobierz_ustawienie($nazwa, $domyslna = '') {
 // Pobierz ustawienia
 $dlugosc_lekcji = intval(pobierz_ustawienie('dlugosc_lekcji', '45'));
 $godzina_rozpoczecia = pobierz_ustawienie('godzina_rozpoczecia', '08:00');
-$przerwa_krotka = intval(pobierz_ustawienie('przerwa_krotka', '10'));
-$przerwa_dluga = intval(pobierz_ustawienie('przerwa_dluga', '15'));
-$przerwa_dluga_po_lekcji = intval(pobierz_ustawienie('przerwa_dluga_po_lekcji', '3'));
+
+// Pobierz długości wszystkich przerw
+$przerwy = [];
+for ($i = 1; $i <= 7; $i++) {
+    $przerwy[$i] = intval(pobierz_ustawienie("przerwa_po_$i", $i == 3 ? '15' : '10'));
+}
 
 // Pobierz wybraną klasę i tydzień
 $klasa_id = $_GET['klasa_id'] ?? null;
@@ -158,11 +161,9 @@ $dni_tygodnia = [
                                 for ($i = 1; $i < $lekcja_nr; $i++) {
                                     $start_time += $dlugosc_lekcji * 60; // Dodaj długość lekcji
 
-                                    // Dodaj odpowiednią przerwę
-                                    if ($i == $przerwa_dluga_po_lekcji) {
-                                        $start_time += $przerwa_dluga * 60;
-                                    } else {
-                                        $start_time += $przerwa_krotka * 60;
+                                    // Dodaj przerwę po danej lekcji (jeśli istnieje)
+                                    if (isset($przerwy[$i])) {
+                                        $start_time += $przerwy[$i] * 60;
                                     }
                                 }
 
