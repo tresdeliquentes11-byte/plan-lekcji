@@ -2,6 +2,37 @@
 require_once '../includes/config.php';
 sprawdz_uprawnienia('dyrektor');
 
+// Funkcja do pobierania ustawienia
+function pobierz_ustawienie($nazwa, $domyslna = '') {
+    global $conn;
+
+    // Sprawdź czy tabela istnieje
+    $check_table = $conn->query("SHOW TABLES LIKE 'ustawienia_planu'");
+    if ($check_table->num_rows == 0) {
+        return $domyslna; // Zwróć wartość domyślną jeśli tabela nie istnieje
+    }
+
+    $stmt = $conn->prepare("SELECT wartosc FROM ustawienia_planu WHERE nazwa = ?");
+    $stmt->bind_param("s", $nazwa);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    if ($row = $result->fetch_assoc()) {
+        return $row['wartosc'];
+    }
+    return $domyslna;
+}
+
+// Pobierz ustawienia
+$dlugosc_lekcji = intval(pobierz_ustawienie('dlugosc_lekcji', '45'));
+$godzina_rozpoczecia = pobierz_ustawienie('godzina_rozpoczecia', '08:00');
+$liczba_lekcji = intval(pobierz_ustawienie('liczba_lekcji', '8'));
+
+// Pobierz długości wszystkich przerw
+$przerwy = [];
+for ($i = 1; $i < $liczba_lekcji; $i++) {
+    $przerwy[$i] = intval(pobierz_ustawienie("przerwa_po_$i", $i == 3 ? '15' : '10'));
+}
+
 // Pobierz wybraną klasę i tydzień
 $klasa_id = $_GET['klasa_id'] ?? null;
 $tydzien_offset = $_GET['tydzien'] ?? 0;
@@ -73,11 +104,14 @@ $dni_tygodnia = [
                 <li><a href="plan_generuj.php">Generuj Plan</a></li>
                 <li><a href="zastepstwa.php">Zastępstwa</a></li>
                 <li><a href="nauczyciele.php">Nauczyciele</a></li>
+                <li><a href="uczniowie.php">Uczniowie</a></li>
                 <li><a href="klasy.php">Klasy</a></li>
                 <li><a href="przedmioty.php">Przedmioty</a></li>
                 <li><a href="sale.php">Sale</a></li>
                 <li><a href="kalendarz.php">Kalendarz</a></li>
                 <li><a href="plan_podglad.php" class="active">Podgląd Planu</a></li>
+                <li><a href="dostepnosc.php">Dostępność</a></li>
+                <li><a href="ustawienia.php">Ustawienia</a></li>
             </ul>
         </nav>
         
@@ -120,10 +154,22 @@ $dni_tygodnia = [
                             </tr>
                         </thead>
                         <tbody>
-                            <?php for ($lekcja_nr = 1; $lekcja_nr <= 8; $lekcja_nr++): ?>
+                            <?php for ($lekcja_nr = 1; $lekcja_nr <= $liczba_lekcji; $lekcja_nr++): ?>
                                 <?php
-                                $start_time = strtotime('08:00') + (($lekcja_nr - 1) * 55 * 60);
-                                $end_time = $start_time + (45 * 60);
+                                // Oblicz czas rozpoczęcia lekcji na podstawie ustawień
+                                $start_time = strtotime($godzina_rozpoczecia);
+
+                                // Dodaj czas poprzednich lekcji i przerw
+                                for ($i = 1; $i < $lekcja_nr; $i++) {
+                                    $start_time += $dlugosc_lekcji * 60; // Dodaj długość lekcji
+
+                                    // Dodaj przerwę po danej lekcji (jeśli istnieje)
+                                    if (isset($przerwy[$i])) {
+                                        $start_time += $przerwy[$i] * 60;
+                                    }
+                                }
+
+                                $end_time = $start_time + ($dlugosc_lekcji * 60);
                                 ?>
                                 <tr>
                                     <td class="time-cell">

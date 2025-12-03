@@ -1,6 +1,11 @@
--- Zeby utworzyc baze dla aplikacji
--- Stworz baze w phpmyadmin o nazwie 'plan_lekcji'
--- I zaimportuj ten plik
+-- phpMyAdmin SQL Dump
+-- version 5.2.1
+-- https://www.phpmyadmin.net/
+--
+-- Host: 127.0.0.1
+-- Generation Time: Dec 03, 2025 at 09:32 PM
+-- Wersja serwera: 10.4.32-MariaDB
+-- Wersja PHP: 8.2.12
 
 SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
 START TRANSACTION;
@@ -57,24 +62,6 @@ CREATE TABLE `klasy` (
   `rozszerzenie_2` varchar(50) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
---
--- Dumping data for table `klasy`
---
-
-INSERT INTO `klasy` (`id`, `nazwa`, `wychowawca_id`, `ilosc_godzin_dziennie`, `rozszerzenie_1`, `rozszerzenie_2`) VALUES
-(1, '1A', NULL, 8, 'Matematyka rozszerzona', 'Fizyka rozszerzona'),
-(2, '1B', NULL, 8, 'Matematyka rozszerzona', 'Język angielski rozszerzony'),
-(3, '1C', NULL, 8, 'Fizyka rozszerzona', 'Język angielski rozszerzony'),
-(4, '2A', NULL, 8, 'Matematyka rozszerzona', 'Fizyka rozszerzona'),
-(5, '2B', NULL, 8, 'Matematyka rozszerzona', 'Język angielski rozszerzony'),
-(6, '2C', NULL, 8, 'Fizyka rozszerzona', 'Język angielski rozszerzony'),
-(7, '3A', NULL, 8, 'Matematyka rozszerzona', 'Fizyka rozszerzona'),
-(8, '3B', NULL, 8, 'Matematyka rozszerzona', 'Język angielski rozszerzony'),
-(9, '3C', NULL, 8, 'Fizyka rozszerzona', 'Język angielski rozszerzony'),
-(10, '4A', NULL, 8, 'Matematyka rozszerzona', 'Fizyka rozszerzona'),
-(11, '4B', NULL, 8, 'Matematyka rozszerzona', 'Język angielski rozszerzony'),
-(12, '4C', NULL, 8, 'Fizyka rozszerzona', 'Język angielski rozszerzony');
-
 -- --------------------------------------------------------
 
 --
@@ -102,6 +89,22 @@ CREATE TABLE `nauczyciele` (
   `id` int(11) NOT NULL,
   `uzytkownik_id` int(11) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Struktura tabeli dla tabeli `nauczyciel_godziny_pracy`
+--
+
+CREATE TABLE `nauczyciel_godziny_pracy` (
+  `id` int(11) NOT NULL,
+  `nauczyciel_id` int(11) NOT NULL,
+  `dzien_tygodnia` int(11) NOT NULL COMMENT '1-5',
+  `godzina_od` time NOT NULL,
+  `godzina_do` time NOT NULL,
+  `utworzono` timestamp NOT NULL DEFAULT current_timestamp(),
+  `zaktualizowano` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 
@@ -184,26 +187,6 @@ CREATE TABLE `przedmioty` (
   `domyslna_ilosc_godzin` int(11) DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
---
--- Dumping data for table `przedmioty`
---
-
-INSERT INTO `przedmioty` (`id`, `nazwa`, `skrot`, `czy_rozszerzony`, `domyslna_ilosc_godzin`) VALUES
-(1, 'Matematyka', 'MAT', 0, 3),
-(2, 'Matematyka rozszerzona', 'MAT-R', 1, 2),
-(3, 'Język polski', 'POL', 0, 4),
-(4, 'Język angielski', 'ANG', 0, 3),
-(5, 'Język angielski rozszerzony', 'ANG-R', 1, 2),
-(6, 'Geografia', 'GEO', 0, 1),
-(8, 'Chemia', 'CHEM', 0, 1),
-(9, 'Fizyka', 'FIZ', 0, 1),
-(10, 'Fizyka rozszerzona', 'FIZ-R', 1, 1),
-(12, 'Język hiszpański', 'HISZ', 0, 1),
-(13, 'Historia', 'HIST', 0, 2),
-(14, 'WOS', 'WOS', 0, 2),
-(15, 'WF', 'WF', 0, 3),
-(16, 'Informatyka', 'INF', 0, 1);
-
 -- --------------------------------------------------------
 
 --
@@ -228,44 +211,6 @@ CREATE TABLE `sala_przedmioty` (
   `przedmiot_id` int(11) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
---
--- Dumping data for table `sala_przedmioty`
---
-
-INSERT INTO `sala_przedmioty` (`id`, `sala_id`, `przedmiot_id`) VALUES
-(1, 1, 1),
-(2, 1, 2),
-(40, 2, 4),
-(41, 2, 5),
-(42, 2, 12),
-(8, 3, 3),
-(9, 4, 13),
-(10, 5, 6),
-(33, 6, 9),
-(34, 6, 10),
-(35, 7, 8),
-(37, 9, 16),
-(38, 10, 15),
-(19, 11, 1),
-(20, 11, 2),
-(13, 12, 4),
-(14, 12, 5),
-(15, 12, 12),
-(17, 13, 3),
-(18, 14, 13),
-(21, 15, 6),
-(22, 16, 6),
-(23, 17, 1),
-(24, 17, 2),
-(25, 18, 9),
-(26, 18, 10),
-(27, 19, 9),
-(28, 19, 10),
-(29, 20, 8),
-(31, 22, 16),
-(32, 23, 15),
-(39, 24, 14);
-
 -- --------------------------------------------------------
 
 --
@@ -279,36 +224,6 @@ CREATE TABLE `sale` (
   `typ` enum('standardowa','pracownia','sportowa','specjalna') DEFAULT 'standardowa',
   `pojemnosc` int(11) DEFAULT 30
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
---
--- Dumping data for table `sale`
---
-
-INSERT INTO `sale` (`id`, `numer`, `nazwa`, `typ`, `pojemnosc`) VALUES
-(1, '101', 'Sala matematyczna', 'standardowa', 30),
-(2, '102', 'Sala językowa', 'standardowa', 30),
-(3, '103', 'Sala polonistyczna', 'standardowa', 30),
-(4, '104', 'Sala historyczna', 'standardowa', 30),
-(5, '105', 'Sala geograficzna', 'standardowa', 30),
-(6, '201', 'Pracownia fizyczna', 'pracownia', 30),
-(7, '202', 'Pracownia chemiczna', 'pracownia', 30),
-(8, '203', 'Pracownia biologiczna', 'pracownia', 30),
-(9, '204', 'Pracownia informatyczna', 'pracownia', 30),
-(10, 'SALA-WF', 'Sala gimnastyczna', 'sportowa', 30),
-(11, '106', 'Sala matematyczna', 'standardowa', 30),
-(12, '107', 'Sala językowa', 'standardowa', 30),
-(13, '108', 'Sala polonistyczna', 'standardowa', 30),
-(14, '109', 'Sala historyczna', 'standardowa', 30),
-(15, '110', 'Sala geograficzna', 'standardowa', 30),
-(16, '111', 'Sala geograficzna', 'standardowa', 30),
-(17, '112', 'Sala matematyczna', 'standardowa', 30),
-(18, '113', 'Pracownia fizyczna', 'pracownia', 30),
-(19, '114', 'Pracownia fizyczna', 'pracownia', 30),
-(20, '115', 'Pracownia chemiczna', 'pracownia', 30),
-(21, '116', 'Pracownia biologiczna', 'pracownia', 30),
-(22, '117', 'Pracownia informatyczna', 'pracownia', 30),
-(23, '118', 'Sala gimnastyczna', 'sportowa', 30),
-(24, '119', 'Sala kulturoznawcza', 'specjalna', 30);
 
 -- --------------------------------------------------------
 
@@ -370,6 +285,20 @@ CREATE TABLE `uczniowie` (
   `id` int(11) NOT NULL,
   `uzytkownik_id` int(11) NOT NULL,
   `klasa_id` int(11) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Struktura tabeli dla tabeli `ustawienia_planu`
+--
+
+CREATE TABLE `ustawienia_planu` (
+  `id` int(11) NOT NULL,
+  `nazwa` varchar(100) NOT NULL,
+  `wartosc` varchar(255) NOT NULL,
+  `opis` text DEFAULT NULL,
+  `data_modyfikacji` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
@@ -456,6 +385,15 @@ ALTER TABLE `logi_aktywnosci`
 ALTER TABLE `nauczyciele`
   ADD PRIMARY KEY (`id`),
   ADD UNIQUE KEY `uzytkownik_id` (`uzytkownik_id`);
+
+--
+-- Indeksy dla tabeli `nauczyciel_godziny_pracy`
+--
+ALTER TABLE `nauczyciel_godziny_pracy`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `unique_nauczyciel_dzien` (`nauczyciel_id`,`dzien_tygodnia`),
+  ADD KEY `idx_nauczyciel` (`nauczyciel_id`),
+  ADD KEY `idx_dzien` (`dzien_tygodnia`);
 
 --
 -- Indeksy dla tabeli `nauczyciel_przedmioty`
@@ -561,6 +499,13 @@ ALTER TABLE `uczniowie`
   ADD KEY `klasa_id` (`klasa_id`);
 
 --
+-- Indeksy dla tabeli `ustawienia_planu`
+--
+ALTER TABLE `ustawienia_planu`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `nazwa` (`nazwa`);
+
+--
 -- Indeksy dla tabeli `uzytkownicy`
 --
 ALTER TABLE `uzytkownicy`
@@ -596,7 +541,7 @@ ALTER TABLE `klasa_przedmioty`
 -- AUTO_INCREMENT for table `klasy`
 --
 ALTER TABLE `klasy`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=13;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=17;
 
 --
 -- AUTO_INCREMENT for table `logi_aktywnosci`
@@ -608,13 +553,19 @@ ALTER TABLE `logi_aktywnosci`
 -- AUTO_INCREMENT for table `nauczyciele`
 --
 ALTER TABLE `nauczyciele`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=77;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=78;
+
+--
+-- AUTO_INCREMENT for table `nauczyciel_godziny_pracy`
+--
+ALTER TABLE `nauczyciel_godziny_pracy`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=45;
 
 --
 -- AUTO_INCREMENT for table `nauczyciel_przedmioty`
 --
 ALTER TABLE `nauczyciel_przedmioty`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=108;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=109;
 
 --
 -- AUTO_INCREMENT for table `nieobecnosci`
@@ -680,13 +631,19 @@ ALTER TABLE `statystyki_uzytkownikow`
 -- AUTO_INCREMENT for table `uczniowie`
 --
 ALTER TABLE `uczniowie`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=367;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=364;
+
+--
+-- AUTO_INCREMENT for table `ustawienia_planu`
+--
+ALTER TABLE `ustawienia_planu`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
 -- AUTO_INCREMENT for table `uzytkownicy`
 --
 ALTER TABLE `uzytkownicy`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=445;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=443;
 
 --
 -- AUTO_INCREMENT for table `zastepstwa`
@@ -723,6 +680,12 @@ ALTER TABLE `logi_aktywnosci`
 --
 ALTER TABLE `nauczyciele`
   ADD CONSTRAINT `nauczyciele_ibfk_1` FOREIGN KEY (`uzytkownik_id`) REFERENCES `uzytkownicy` (`id`) ON DELETE CASCADE;
+
+--
+-- Constraints for table `nauczyciel_godziny_pracy`
+--
+ALTER TABLE `nauczyciel_godziny_pracy`
+  ADD CONSTRAINT `nauczyciel_godziny_pracy_ibfk_1` FOREIGN KEY (`nauczyciel_id`) REFERENCES `nauczyciele` (`id`) ON DELETE CASCADE;
 
 --
 -- Constraints for table `nauczyciel_przedmioty`

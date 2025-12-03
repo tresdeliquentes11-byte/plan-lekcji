@@ -1,5 +1,6 @@
 <?php
 require_once '../includes/config.php';
+require_once '../includes/dostepnosc_helpers.php';
 
 class GeneratorZastepstw {
     private $conn;
@@ -89,7 +90,20 @@ class GeneratorZastepstw {
         // 1. Mogą uczyć tego przedmiotu
         // 2. Są wolni w tym czasie
         // 3. Nie są nieobecni
-        
+        // 4. Są dostępni w tych godzinach (nowe!)
+
+        // Najpierw pobierz dzień tygodnia dla daty
+        $timestamp = strtotime($data);
+        $dzien_tygodnia_nr = date('N', $timestamp); // 1-7 (poniedziałek-niedziela)
+        $dni_mapping = [
+            1 => 'poniedzialek',
+            2 => 'wtorek',
+            3 => 'sroda',
+            4 => 'czwartek',
+            5 => 'piatek'
+        ];
+        $dzien_nazwa = $dni_mapping[$dzien_tygodnia_nr] ?? null;
+
         $result = $this->conn->query("
             SELECT n.id, u.imie, u.nazwisko
             FROM nauczyciele n
@@ -110,14 +124,24 @@ class GeneratorZastepstw {
                 FROM nieobecnosci
                 WHERE '$data' BETWEEN data_od AND data_do
             )
-            LIMIT 1
         ");
-        
-        if ($result->num_rows > 0) {
-            return $result->fetch_assoc();
+
+        // Sprawdź każdego kandydata pod kątem dostępności w godzinach
+        while ($nauczyciel = $result->fetch_assoc()) {
+            $jest_dostepny = sprawdz_dostepnosc_nauczyciela_w_czasie(
+                $nauczyciel['id'],
+                $dzien_nazwa,
+                $data,
+                $numer_lekcji,
+                $this->conn
+            );
+
+            if ($jest_dostepny) {
+                return $nauczyciel; // Znaleziono dostępnego nauczyciela
+            }
         }
-        
-        return null;
+
+        return null; // Nie znaleziono żadnego dostępnego nauczyciela
     }
     
     // Utworzenie rekordu zastępstwa

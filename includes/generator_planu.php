@@ -1,5 +1,6 @@
 <?php
 require_once '../includes/config.php';
+require_once '../includes/dostepnosc_helpers.php';
 
 class GeneratorPlanu {
     private $conn;
@@ -254,6 +255,7 @@ class GeneratorPlanu {
     
     // Sprawdzanie dostępności nauczyciela
     private function sprawdzDostepnoscNauczyciela($nauczyciel_id, $dzien, $lekcja_nr, $aktualna_klasa_id) {
+        // KROK 1: Sprawdź czy nauczyciel nie ma innej lekcji w tym samym czasie
         $result = $this->conn->query("
             SELECT COUNT(*) as count
             FROM plan_lekcji
@@ -262,9 +264,23 @@ class GeneratorPlanu {
             AND numer_lekcji = $lekcja_nr
             AND klasa_id != $aktualna_klasa_id
         ");
-        
+
         $row = $result->fetch_assoc();
-        return $row['count'] == 0;
+        if ($row['count'] > 0) {
+            return false; // Nauczyciel ma już inną lekcję
+        }
+
+        // KROK 2: Sprawdź dostępność nauczyciela w tym czasie (godziny pracy)
+        // Dla generowania planu szablon nie ma konkretnej daty, więc przekazujemy NULL
+        $jest_dostepny = sprawdz_dostepnosc_nauczyciela_w_czasie(
+            $nauczyciel_id,
+            $dzien,
+            null, // Brak konkretnej daty dla szablonu
+            $lekcja_nr,
+            $this->conn
+        );
+
+        return $jest_dostepny;
     }
     
     // Przydzielanie sali z uwzględnieniem preferencji dla przedmiotu i nauczyciela

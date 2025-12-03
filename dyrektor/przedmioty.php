@@ -60,11 +60,14 @@ $przedmioty = $conn->query("SELECT * FROM przedmioty ORDER BY nazwa");
                 <li><a href="plan_generuj.php">Generuj Plan</a></li>
                 <li><a href="zastepstwa.php">Zastępstwa</a></li>
                 <li><a href="nauczyciele.php">Nauczyciele</a></li>
+                <li><a href="uczniowie.php">Uczniowie</a></li>
                 <li><a href="klasy.php">Klasy</a></li>
                 <li><a href="przedmioty.php" class="active">Przedmioty</a></li>
                 <li><a href="sale.php">Sale</a></li>
                 <li><a href="kalendarz.php">Kalendarz</a></li>
                 <li><a href="plan_podglad.php">Podgląd Planu</a></li>
+                <li><a href="dostepnosc.php">Dostępność</a></li>
+                <li><a href="ustawienia.php">Ustawienia</a></li>
             </ul>
         </nav>
         
