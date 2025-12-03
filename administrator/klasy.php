@@ -43,7 +43,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['dodaj_klase'])) {
                 $message_type = 'success';
 
                 // Logowanie akcji
-                loguj_akcje($_SESSION['user_id'], 'dodanie_klasy', 'Dodano klasę: ' . $nazwa);
+                loguj_aktywnosc($_SESSION['user_id'], 'dodanie_klasy', 'Dodano klasę: ' . $nazwa);
             } else {
                 $message = 'Błąd podczas dodawania klasy: ' . $conn->error;
                 $message_type = 'danger';
@@ -91,7 +91,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['usun_klase'])) {
                 $message_type = 'success';
 
                 // Logowanie akcji
-                loguj_akcje($_SESSION['user_id'], 'usuniecie_klasy', 'Usunięto klasę: ' . $klasa['nazwa']);
+                loguj_aktywnosc($_SESSION['user_id'], 'usuniecie_klasy', 'Usunięto klasę: ' . $klasa['nazwa']);
             } else {
                 $message = 'Błąd podczas usuwania klasy: ' . $conn->error;
                 $message_type = 'danger';
