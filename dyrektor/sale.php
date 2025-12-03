@@ -240,6 +240,7 @@ if (isset($_GET['edytuj'])) {
                 <li><a href="plan_generuj.php">Generuj Plan</a></li>
                 <li><a href="zastepstwa.php">Zastępstwa</a></li>
                 <li><a href="nauczyciele.php">Nauczyciele</a></li>
+                <li><a href="uczniowie.php">Uczniowie</a></li>
                 <li><a href="klasy.php">Klasy</a></li>
                 <li><a href="przedmioty.php">Przedmioty</a></li>
                 <li><a href="sale.php" class="active">Sale</a></li>
