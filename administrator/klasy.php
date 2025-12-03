@@ -15,6 +15,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['dodaj_klase'])) {
     $ilosc_godzin_dziennie = intval($_POST['ilosc_godzin_dziennie']);
     $rozszerzenie_1 = $_POST['rozszerzenie_1'];
     $rozszerzenie_2 = $_POST['rozszerzenie_2'];
+    $wychowawca_id = !empty($_POST['wychowawca_id']) ? intval($_POST['wychowawca_id']) : null;
 
     // Walidacja
     if (empty($nazwa)) {
@@ -35,8 +36,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['dodaj_klase'])) {
             $message_type = 'danger';
         } else {
             // Dodaj klasę
-            $stmt = $conn->prepare("INSERT INTO klasy (nazwa, ilosc_godzin_dziennie, rozszerzenie_1, rozszerzenie_2) VALUES (?, ?, ?, ?)");
-            $stmt->bind_param("siss", $nazwa, $ilosc_godzin_dziennie, $rozszerzenie_1, $rozszerzenie_2);
+            $stmt = $conn->prepare("INSERT INTO klasy (nazwa, wychowawca_id, ilosc_godzin_dziennie, rozszerzenie_1, rozszerzenie_2) VALUES (?, ?, ?, ?, ?)");
+            $stmt->bind_param("siiss", $nazwa, $wychowawca_id, $ilosc_godzin_dziennie, $rozszerzenie_1, $rozszerzenie_2);
 
             if ($stmt->execute()) {
                 $message = 'Klasa "' . e($nazwa) . '" została dodana pomyślnie';
@@ -99,6 +100,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['usun_klase'])) {
         }
     }
 }
+
+// Pobierz nauczycieli, którzy NIE są wychowawcami żadnej klasy
+$nauczyciele_bez_klasy = $conn->query("
+    SELECT n.id, u.imie, u.nazwisko
+    FROM nauczyciele n
+    JOIN uzytkownicy u ON n.uzytkownik_id = u.id
+    WHERE n.id NOT IN (SELECT wychowawca_id FROM klasy WHERE wychowawca_id IS NOT NULL)
+    ORDER BY u.nazwisko, u.imie
+");
 
 // Pobierz wszystkie klasy z dodatkowymi informacjami
 $klasy = $conn->query("
@@ -260,7 +270,11 @@ $klasy = $conn->query("
         }
 
         .form-grid .form-group:first-child {
-            grid-column: 1 / -1;
+            grid-column: 1 / 2;
+        }
+
+        .form-grid .form-group:nth-child(2) {
+            grid-column: 2 / 3;
         }
     </style>
 </head>
@@ -291,6 +305,23 @@ $klasy = $conn->query("
                                 <label>Nazwa klasy *</label>
                                 <input type="text" name="nazwa" placeholder="np. 1A, 2B, 3C" required maxlength="10">
                                 <small>Maksymalnie 10 znaków</small>
+                            </div>
+
+                            <div class="form-group">
+                                <label>Wychowawca</label>
+                                <select name="wychowawca_id">
+                                    <option value="">Brak (przypisz później)</option>
+                                    <?php if ($nauczyciele_bez_klasy->num_rows > 0): ?>
+                                        <?php while ($nauczyciel = $nauczyciele_bez_klasy->fetch_assoc()): ?>
+                                            <option value="<?php echo $nauczyciel['id']; ?>">
+                                                <?php echo e($nauczyciel['imie'] . ' ' . $nauczyciel['nazwisko']); ?>
+                                            </option>
+                                        <?php endwhile; ?>
+                                    <?php else: ?>
+                                        <option value="" disabled>Wszyscy nauczyciele są już wychowawcami</option>
+                                    <?php endif; ?>
+                                </select>
+                                <small>Tylko nauczyciele bez przypisanej klasy</small>
                             </div>
 
                             <div class="form-group">
