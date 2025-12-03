@@ -146,6 +146,7 @@ if (isset($_GET['edytuj'])) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Zarządzanie Salami - Panel Dyrektora</title>
     <link rel="stylesheet" href="../css/style.css">
+    <link rel="stylesheet" href="../css/admin.css">
     <style>
         .sala-grid {
             display: grid;
@@ -225,33 +226,20 @@ if (isset($_GET['edytuj'])) {
     </style>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>System Planu Lekcji - Panel Dyrektora</h1>
+    <div class="admin-layout">
+        <?php include 'includes/sidebar.php'; ?>
+
+        <div class="admin-main">
+        <header class="admin-header">
+            <h1>Zarządzanie Salami</h1>
             <div class="user-info">
                 <span>Witaj, <?php echo e($_SESSION['user_name']); ?>!</span>
                 <a href="../logout.php" class="btn-logout">Wyloguj</a>
             </div>
         </header>
         
-        <nav>
-            <ul>
-                <li><a href="dashboard.php">Dashboard</a></li>
-                <li><a href="plan_generuj.php">Generuj Plan</a></li>
-                <li><a href="zastepstwa.php">Zastępstwa</a></li>
-                <li><a href="nauczyciele.php">Nauczyciele</a></li>
-                <li><a href="uczniowie.php">Uczniowie</a></li>
-                <li><a href="klasy.php">Klasy</a></li>
-                <li><a href="przedmioty.php">Przedmioty</a></li>
-                <li><a href="sale.php" class="active">Sale</a></li>
-                <li><a href="kalendarz.php">Kalendarz</a></li>
-                <li><a href="plan_podglad.php">Podgląd Planu</a></li>
-                <li><a href="dostepnosc.php">Dostępność</a></li>
-                <li><a href="ustawienia.php">Ustawienia</a></li>
-            </ul>
-        </nav>
         
-        <div class="content">
+        <div class="admin-content">
             <h2 class="page-title">Zarządzanie Salami Lekcyjnymi</h2>
             
             <?php if ($message): ?>
@@ -455,6 +443,7 @@ if (isset($_GET['edytuj'])) {
                         <td>Języki obce, Muzyka, Plastyka</td>
                     </tr>
                 </table>
+            </div>
             </div>
         </div>
     </div>

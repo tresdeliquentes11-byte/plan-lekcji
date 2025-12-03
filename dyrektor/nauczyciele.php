@@ -76,36 +76,22 @@ $przedmioty = $conn->query("SELECT * FROM przedmioty ORDER BY nazwa");
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Zarządzanie Nauczycielami</title>
     <link rel="stylesheet" href="../css/style.css">
+    <link rel="stylesheet" href="../css/admin.css">
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>System Planu Lekcji - Panel Dyrektora</h1>
-            <div class="user-info">
-                <span>Witaj, <?php echo e($_SESSION['user_name']); ?>!</span>
-                <a href="../logout.php" class="btn-logout">Wyloguj</a>
-            </div>
-        </header>
-        
-        <nav>
-            <ul>
-                <li><a href="dashboard.php">Dashboard</a></li>
-                <li><a href="plan_generuj.php">Generuj Plan</a></li>
-                <li><a href="zastepstwa.php">Zastępstwa</a></li>
-                <li><a href="nauczyciele.php" class="active">Nauczyciele</a></li>
-                <li><a href="uczniowie.php">Uczniowie</a></li>
-                <li><a href="klasy.php">Klasy</a></li>
-                <li><a href="przedmioty.php">Przedmioty</a></li>
-                <li><a href="sale.php">Sale</a></li>
-                <li><a href="kalendarz.php">Kalendarz</a></li>
-                <li><a href="plan_podglad.php">Podgląd Planu</a></li>
-                <li><a href="dostepnosc.php">Dostępność</a></li>
-                <li><a href="ustawienia.php">Ustawienia</a></li>
-            </ul>
-        </nav>
-        
-        <div class="content">
-            <h2 class="page-title">Zarządzanie Nauczycielami</h2>
+    <div class="admin-layout">
+        <?php include 'includes/sidebar.php'; ?>
+
+        <div class="admin-main">
+            <header class="admin-header">
+                <h1>Zarządzanie Nauczycielami</h1>
+                <div class="user-info">
+                    <span>Witaj, <?php echo e($_SESSION['user_name']); ?>!</span>
+                    <a href="../logout.php" class="btn-logout">Wyloguj</a>
+                </div>
+            </header>
+
+            <div class="admin-content">
             
             <?php if ($message): ?>
                 <div class="alert alert-<?php echo $message_type; ?>"><?php echo e($message); ?></div>
@@ -182,6 +168,8 @@ $przedmioty = $conn->query("SELECT * FROM przedmioty ORDER BY nazwa");
                         <?php endwhile; ?>
                     </tbody>
                 </table>
+            </div>
+        </div>
             </div>
         </div>
     </div>
