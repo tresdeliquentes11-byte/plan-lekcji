@@ -76,7 +76,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['zapisz'])) {
 // Pobierz wybranego nauczyciela
 $wybrany_nauczyciel = isset($_GET['nauczyciel']) ? intval($_GET['nauczyciel']) : null;
 
-// Pobierz listę nauczycieli
+// Pobierz wszystkich nauczycieli z ich godzinami pracy dla podglądu
+$harmonogram = [];
+$wszyscy_nauczyciele = $conn->query("
+    SELECT n.id, u.imie, u.nazwisko
+    FROM nauczyciele n
+    JOIN uzytkownicy u ON n.uzytkownik_id = u.id
+    ORDER BY u.nazwisko, u.imie
+");
+
+while ($n = $wszyscy_nauczyciele->fetch_assoc()) {
+    $nauczyciel_id = $n['id'];
+    $harmonogram[$nauczyciel_id] = [
+        'imie' => $n['imie'],
+        'nazwisko' => $n['nazwisko'],
+        'godziny' => []
+    ];
+
+    // Pobierz godziny dla tego nauczyciela
+    $godziny_query = $conn->prepare("
+        SELECT dzien_tygodnia, godzina_od, godzina_do
+        FROM nauczyciel_godziny_pracy
+        WHERE nauczyciel_id = ?
+        ORDER BY dzien_tygodnia
+    ");
+    $godziny_query->bind_param("i", $nauczyciel_id);
+    $godziny_query->execute();
+    $result = $godziny_query->get_result();
+
+    while ($g = $result->fetch_assoc()) {
+        $harmonogram[$nauczyciel_id]['godziny'][$g['dzien_tygodnia']] = [
+            'od' => substr($g['godzina_od'], 0, 5),
+            'do' => substr($g['godzina_do'], 0, 5)
+        ];
+    }
+}
+
+// Pobierz listę nauczycieli dla dropdowna
 $nauczyciele = $conn->query("
     SELECT n.id, u.imie, u.nazwisko
     FROM nauczyciele n
@@ -156,6 +192,44 @@ $dni_tygodnia = [
             font-weight: 500;
             width: 150px;
         }
+        .schedule-overview {
+            width: 100%;
+            margin-top: 20px;
+            border-collapse: collapse;
+        }
+        .schedule-overview th {
+            background-color: #495057;
+            color: white;
+            padding: 12px;
+            text-align: center;
+            font-weight: 600;
+            border: 1px solid #dee2e6;
+        }
+        .schedule-overview td {
+            padding: 10px;
+            border: 1px solid #dee2e6;
+            text-align: center;
+        }
+        .schedule-overview tr:nth-child(even) {
+            background-color: #f8f9fa;
+        }
+        .schedule-overview tr:hover {
+            background-color: #e9ecef;
+        }
+        .teacher-name {
+            text-align: left;
+            font-weight: 500;
+            padding-left: 15px !important;
+        }
+        .hours-cell {
+            font-size: 14px;
+            color: #28a745;
+            font-weight: 500;
+        }
+        .no-hours {
+            color: #dc3545;
+            font-weight: 500;
+        }
     </style>
     <script>
         function toggleDay(dzien) {
@@ -228,7 +302,50 @@ $dni_tygodnia = [
             <?php endif; ?>
 
             <div class="card">
-                <h3 class="card-title">Wybierz Nauczyciela</h3>
+                <h3 class="card-title">Harmonogram Pracy Nauczycieli</h3>
+
+                <?php if (count($harmonogram) > 0): ?>
+                    <table class="schedule-overview">
+                        <thead>
+                            <tr>
+                                <th style="width: 200px;">Nauczyciel</th>
+                                <th>Poniedziałek</th>
+                                <th>Wtorek</th>
+                                <th>Środa</th>
+                                <th>Czwartek</th>
+                                <th>Piątek</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($harmonogram as $nauczyciel_id => $dane): ?>
+                                <tr>
+                                    <td class="teacher-name">
+                                        <a href="?nauczyciel=<?php echo $nauczyciel_id; ?>" style="color: #007bff; text-decoration: none;">
+                                            <?php echo e($dane['imie'] . ' ' . $dane['nazwisko']); ?>
+                                        </a>
+                                    </td>
+                                    <?php for ($dzien = 1; $dzien <= 5; $dzien++): ?>
+                                        <td>
+                                            <?php if (isset($dane['godziny'][$dzien])): ?>
+                                                <span class="hours-cell">
+                                                    <?php echo $dane['godziny'][$dzien]['od']; ?> - <?php echo $dane['godziny'][$dzien]['do']; ?>
+                                                </span>
+                                            <?php else: ?>
+                                                <span class="no-hours">—</span>
+                                            <?php endif; ?>
+                                        </td>
+                                    <?php endfor; ?>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                <?php else: ?>
+                    <div class="alert alert-info">Brak nauczycieli w systemie</div>
+                <?php endif; ?>
+            </div>
+
+            <div class="card">
+                <h3 class="card-title">Edytuj Godziny Pracy</h3>
                 <form method="GET">
                     <div class="form-group">
                         <label for="nauczyciel">Nauczyciel</label>
