@@ -25,10 +25,11 @@ function pobierz_ustawienie($nazwa, $domyslna = '') {
 // Pobierz ustawienia
 $dlugosc_lekcji = intval(pobierz_ustawienie('dlugosc_lekcji', '45'));
 $godzina_rozpoczecia = pobierz_ustawienie('godzina_rozpoczecia', '08:00');
+$liczba_lekcji = intval(pobierz_ustawienie('liczba_lekcji', '8'));
 
 // Pobierz długości wszystkich przerw
 $przerwy = [];
-for ($i = 1; $i <= 7; $i++) {
+for ($i = 1; $i < $liczba_lekcji; $i++) {
     $przerwy[$i] = intval(pobierz_ustawienie("przerwa_po_$i", $i == 3 ? '15' : '10'));
 }
 
@@ -152,7 +153,7 @@ $dni_tygodnia = [
                             </tr>
                         </thead>
                         <tbody>
-                            <?php for ($lekcja_nr = 1; $lekcja_nr <= 8; $lekcja_nr++): ?>
+                            <?php for ($lekcja_nr = 1; $lekcja_nr <= $liczba_lekcji; $lekcja_nr++): ?>
                                 <?php
                                 // Oblicz czas rozpoczęcia lekcji na podstawie ustawień
                                 $start_time = strtotime($godzina_rozpoczecia);

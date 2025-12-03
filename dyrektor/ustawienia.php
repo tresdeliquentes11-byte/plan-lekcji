@@ -23,13 +23,16 @@ if ($check_table->num_rows == 0) {
         INSERT INTO `ustawienia_planu` (`nazwa`, `wartosc`, `opis`) VALUES
         ('dlugosc_lekcji', '45', 'Długość jednej lekcji w minutach'),
         ('godzina_rozpoczecia', '08:00', 'Godzina rozpoczęcia pierwszej lekcji'),
+        ('liczba_lekcji', '8', 'Maksymalna liczba lekcji w dniu'),
         ('przerwa_po_1', '10', 'Długość przerwy po 1 lekcji (w minutach)'),
         ('przerwa_po_2', '10', 'Długość przerwy po 2 lekcji (w minutach)'),
         ('przerwa_po_3', '15', 'Długość przerwy po 3 lekcji (w minutach)'),
         ('przerwa_po_4', '10', 'Długość przerwy po 4 lekcji (w minutach)'),
         ('przerwa_po_5', '10', 'Długość przerwy po 5 lekcji (w minutach)'),
         ('przerwa_po_6', '10', 'Długość przerwy po 6 lekcji (w minutach)'),
-        ('przerwa_po_7', '10', 'Długość przerwy po 7 lekcji (w minutach)')
+        ('przerwa_po_7', '10', 'Długość przerwy po 7 lekcji (w minutach)'),
+        ('przerwa_po_8', '10', 'Długość przerwy po 8 lekcji (w minutach)'),
+        ('przerwa_po_9', '10', 'Długość przerwy po 9 lekcji (w minutach)')
     ");
 }
 
@@ -60,12 +63,17 @@ function zapisz_ustawienie($nazwa, $wartosc, $opis = '') {
 // Zapisywanie ustawień
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['zapisz'])) {
     try {
+        $liczba_lekcji = intval($_POST['liczba_lekcji']);
+
         zapisz_ustawienie('dlugosc_lekcji', $_POST['dlugosc_lekcji'], 'Długość jednej lekcji w minutach');
         zapisz_ustawienie('godzina_rozpoczecia', $_POST['godzina_rozpoczecia'], 'Godzina rozpoczęcia pierwszej lekcji');
+        zapisz_ustawienie('liczba_lekcji', $liczba_lekcji, 'Maksymalna liczba lekcji w dniu');
 
-        // Zapisz indywidualne przerwy
-        for ($i = 1; $i <= 7; $i++) {
-            zapisz_ustawienie("przerwa_po_$i", $_POST["przerwa_po_$i"], "Długość przerwy po $i lekcji (w minutach)");
+        // Zapisz indywidualne przerwy (do max 10 lekcji)
+        for ($i = 1; $i < $liczba_lekcji; $i++) {
+            if (isset($_POST["przerwa_po_$i"])) {
+                zapisz_ustawienie("przerwa_po_$i", $_POST["przerwa_po_$i"], "Długość przerwy po $i lekcji (w minutach)");
+            }
         }
 
         $message = 'Ustawienia zostały zapisane pomyślnie';
@@ -79,19 +87,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['zapisz'])) {
 // Pobierz aktualne ustawienia
 $dlugosc_lekcji = pobierz_ustawienie('dlugosc_lekcji', '45');
 $godzina_rozpoczecia = pobierz_ustawienie('godzina_rozpoczecia', '08:00');
+$liczba_lekcji = intval(pobierz_ustawienie('liczba_lekcji', '8'));
 
 // Pobierz długości wszystkich przerw
 $przerwy = [];
-for ($i = 1; $i <= 7; $i++) {
+for ($i = 1; $i < $liczba_lekcji; $i++) {
     $przerwy[$i] = intval(pobierz_ustawienie("przerwa_po_$i", $i == 3 ? '15' : '10'));
 }
 
 // Oblicz przykładowe godziny lekcji
-function oblicz_godziny_lekcji($start, $dlugosc_lekcji, $przerwy) {
+function oblicz_godziny_lekcji($start, $dlugosc_lekcji, $przerwy, $liczba_lekcji) {
     $godziny = [];
     $czas = strtotime($start);
 
-    for ($i = 1; $i <= 8; $i++) {
+    for ($i = 1; $i <= $liczba_lekcji; $i++) {
         $start_lekcji = date('H:i', $czas);
         $czas += $dlugosc_lekcji * 60;
         $koniec_lekcji = date('H:i', $czas);
@@ -99,7 +108,7 @@ function oblicz_godziny_lekcji($start, $dlugosc_lekcji, $przerwy) {
         $godziny[$i] = "$start_lekcji - $koniec_lekcji";
 
         // Dodaj przerwę (jeśli nie jest to ostatnia lekcja)
-        if ($i < 8 && isset($przerwy[$i])) {
+        if ($i < $liczba_lekcji && isset($przerwy[$i])) {
             $czas += $przerwy[$i] * 60;
         }
     }
@@ -107,7 +116,7 @@ function oblicz_godziny_lekcji($start, $dlugosc_lekcji, $przerwy) {
     return $godziny;
 }
 
-$przykladowe_godziny = oblicz_godziny_lekcji($godzina_rozpoczecia, $dlugosc_lekcji, $przerwy);
+$przykladowe_godziny = oblicz_godziny_lekcji($godzina_rozpoczecia, $dlugosc_lekcji, $przerwy, $liczba_lekcji);
 ?>
 <!DOCTYPE html>
 <html lang="pl">
@@ -193,6 +202,43 @@ $przykladowe_godziny = oblicz_godziny_lekcji($godzina_rozpoczecia, $dlugosc_lekc
             padding-top: 20px;
         }
     </style>
+    <script>
+        function aktualizujPrzerwy() {
+            const liczbaLekcji = parseInt(document.getElementById('liczba_lekcji').value);
+            const container = document.getElementById('przerwy_container');
+
+            // Wyczyść kontener
+            container.innerHTML = '';
+
+            // Wygeneruj pola dla przerw (liczba przerw = liczba lekcji - 1)
+            for (let i = 1; i < liczbaLekcji; i++) {
+                const div = document.createElement('div');
+                div.className = 'przerwa-item';
+
+                const label = document.createElement('label');
+                label.textContent = 'Po ' + i + ' lekcji';
+
+                const input = document.createElement('input');
+                input.type = 'number';
+                input.name = 'przerwa_po_' + i;
+                input.value = <?php echo json_encode($przerwy); ?>[i] || (i == 3 ? 15 : 10);
+                input.min = 5;
+                input.max = 30;
+                input.required = true;
+                input.style.textAlign = 'center';
+                input.style.fontWeight = '600';
+
+                div.appendChild(label);
+                div.appendChild(input);
+                container.appendChild(div);
+            }
+        }
+
+        // Wywołaj na załadowanie strony
+        window.addEventListener('DOMContentLoaded', function() {
+            aktualizujPrzerwy();
+        });
+    </script>
 </head>
 <body>
     <div class="container">
@@ -232,6 +278,21 @@ $przykladowe_godziny = oblicz_godziny_lekcji($godzina_rozpoczecia, $dlugosc_lekc
 
                 <form method="POST" id="settingsForm">
                     <div class="form-group">
+                        <label>Liczba lekcji w dniu *</label>
+                        <div class="form-group-inline">
+                            <input type="number"
+                                   id="liczba_lekcji"
+                                   name="liczba_lekcji"
+                                   value="<?php echo e($liczba_lekcji); ?>"
+                                   min="6"
+                                   max="10"
+                                   required
+                                   onchange="aktualizujPrzerwy()">
+                            <span class="help-text">Ile maksymalnie lekcji w ciągu dnia (6-10)</span>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
                         <label>Godzina rozpoczęcia zajęć *</label>
                         <div class="form-group-inline">
                             <input type="time" name="godzina_rozpoczecia" value="<?php echo e($godzina_rozpoczecia); ?>" required>
@@ -250,21 +311,10 @@ $przykladowe_godziny = oblicz_godziny_lekcji($godzina_rozpoczecia, $dlugosc_lekc
                     <div class="section-divider">
                         <h4 style="margin-bottom: 15px; color: #333;">Długość przerw po poszczególnych lekcjach (w minutach)</h4>
                         <p class="help-text" style="margin-bottom: 15px;">
-                            Ustaw długość każdej przerwy osobno. Możesz ustawić dłuższą przerwę obiadową (np. 15-20 min) po wybranej lekcji.
+                            Ustaw długość każdej przerwy osobno. Pola przerw dostosowują się automatycznie do liczby lekcji.
                         </p>
-                        <div class="przerwy-grid">
-                            <?php for ($i = 1; $i <= 7; $i++): ?>
-                                <div class="przerwa-item">
-                                    <label>Po <?php echo $i; ?> lekcji</label>
-                                    <input type="number"
-                                           name="przerwa_po_<?php echo $i; ?>"
-                                           value="<?php echo $przerwy[$i]; ?>"
-                                           min="5"
-                                           max="30"
-                                           required
-                                           style="text-align: center; font-weight: 600;">
-                                </div>
-                            <?php endfor; ?>
+                        <div class="przerwy-grid" id="przerwy_container">
+                            <!-- Pola przerw generowane dynamicznie przez JavaScript -->
                         </div>
                     </div>
 
@@ -284,7 +334,7 @@ $przykladowe_godziny = oblicz_godziny_lekcji($godzina_rozpoczecia, $dlugosc_lekc
                                 <td><?php echo $numer; ?> lekcja:</td>
                                 <td><strong><?php echo $godzina; ?></strong></td>
                                 <td>
-                                    <?php if ($numer < 8 && isset($przerwy[$numer])): ?>
+                                    <?php if ($numer < $liczba_lekcji && isset($przerwy[$numer])): ?>
                                         potem przerwa <?php echo $przerwy[$numer]; ?> min
                                     <?php endif; ?>
                                 </td>
@@ -300,9 +350,10 @@ $przykladowe_godziny = oblicz_godziny_lekcji($godzina_rozpoczecia, $dlugosc_lekc
             <div class="card">
                 <h3 class="card-title">Informacje dodatkowe</h3>
                 <ul style="line-height: 2; color: #495057;">
+                    <li><strong>Liczba lekcji:</strong> Określa maksymalną liczbę lekcji w ciągu dnia (6-10). System automatycznie dostosuje pola przerw.</li>
                     <li><strong>Długość lekcji:</strong> Określa ile minut trwa jedna lekcja. W Polsce standardowo jest to 45 minut.</li>
                     <li><strong>Godzina rozpoczęcia:</strong> Pierwsza lekcja rozpoczyna się o wskazanej godzinie.</li>
-                    <li><strong>Indywidualne przerwy:</strong> Możesz ustawić długość każdej przerwy osobno, co pozwala na elastyczne planowanie (np. dłuższa przerwa obiadowa).</li>
+                    <li><strong>Indywidualne przerwy:</strong> Możesz ustawić długość każdej przerwy osobno, co pozwala na elastyczne planowanie.</li>
                     <li><strong>Typowe wartości:</strong> Krótka przerwa 5-10 minut, przerwa obiadowa 15-20 minut.</li>
                 </ul>
             </div>
