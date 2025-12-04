@@ -25,14 +25,6 @@ class GeneratorPlanu {
         $this->conn = $conn;
     }
 
-    // =====================================================================
-    // KROK 1: WALIDACJA
-    // =====================================================================
-
-    /**
-     * Waliduje dane wejściowe przed rozpoczęciem generowania
-     * @return array ['success' => bool, 'errors' => array]
-     */
     private function walidujDane() {
         $this->validation_errors = [];
 
@@ -111,13 +103,6 @@ class GeneratorPlanu {
         ];
     }
 
-    // =====================================================================
-    // KROK 2: ZAŁADOWANIE DANYCH
-    // =====================================================================
-
-    /**
-     * Ładuje wszystkie dane do pamięci
-     */
     private function zaladujDane() {
         // Inicjalizacja struktur
         $this->remaining_hours = [];
@@ -206,15 +191,6 @@ class GeneratorPlanu {
         }
     }
 
-    // =====================================================================
-    // KROK 3: HEURYSTYKA - SORTOWANIE PRZEDMIOTÓW
-    // =====================================================================
-
-    /**
-     * Sortuje przedmioty dla klasy według heurystyki
-     * @param int $klasa_id
-     * @return array Posortowana lista przedmiotów
-     */
     private function sortujPrzedmiotyDlaKlasy($klasa_id) {
         if (!isset($this->remaining_hours[$klasa_id])) {
             return [];
@@ -260,13 +236,6 @@ class GeneratorPlanu {
         return $przedmioty;
     }
 
-    // =====================================================================
-    // KROK 4: GŁÓWNA PĘTLA PRZYPISYWANIA
-    // =====================================================================
-
-    /**
-     * Główna pętla przypisująca lekcje do slotów
-     */
     private function przypisujLekcje() {
         $this->unassigned_slots = [];
 
@@ -342,9 +311,7 @@ class GeneratorPlanu {
         }
     }
 
-    /**
-     * Przypisuje lekcję do slotu i aktualizuje wszystkie struktury
-     */
+
     private function przypiszLekcje($klasa_id, $dzien, $lekcja_nr, $przedmiot_id, $nauczyciel_id, $sala_id) {
         // Oblicz godziny
         $godziny = $this->obliczGodziny($lekcja_nr);
@@ -382,9 +349,7 @@ class GeneratorPlanu {
         $this->occurrences[$klasa_id][$dzien][$family]++;
     }
 
-    /**
-     * Określa family ID dla przedmiotu (podstawa + rozszerzenie traktowane jako jedno)
-     */
+
     private function getFamilyId($przedmiot_id, $klasa_id) {
         // Sprawdź czy to przedmiot rozszerzony
         $result = $this->conn->query("
@@ -409,9 +374,7 @@ class GeneratorPlanu {
         return 'subject_' . $przedmiot_id;
     }
 
-    /**
-     * Sprawdza czy nauczyciel jest dostępny w danym slocie
-     */
+
     private function czyNauczycielDostepny($nauczyciel_id, $dzien, $lekcja_nr) {
         // Sprawdź godziny pracy
         if (!isset($this->teacher_availability[$nauczyciel_id][$dzien][$lekcja_nr]) ||
@@ -427,9 +390,7 @@ class GeneratorPlanu {
         return true;
     }
 
-    /**
-     * Znajduje dostępną salę według priorytetów
-     */
+
     private function znajdzSale($dzien, $lekcja_nr, $przedmiot_id, $nauczyciel_id) {
         // Priorytet 1: Sala przypisana do przedmiotu I nauczyciela
         $result = $this->conn->query("
@@ -491,13 +452,7 @@ class GeneratorPlanu {
         return null;
     }
 
-    // =====================================================================
-    // KROK 5: REPAIR - NAPRAWA PRZEZ SWAP I PRZESUNIĘCIA
-    // =====================================================================
 
-    /**
-     * Próbuje naprawić nieprzypisane sloty przez swap i przesunięcia
-     */
     private function naprawSloty() {
         $max_attempts_per_slot = 200;
         $repaired = 0;
@@ -542,9 +497,7 @@ class GeneratorPlanu {
         return $repaired;
     }
 
-    /**
-     * Próbuje ponownie przypisać przedmiot do slotu
-     */
+
     private function probaPowtornegoPrzypisania($klasa_id, $dzien, $lekcja_nr) {
         $przedmioty = $this->sortujPrzedmiotyDlaKlasy($klasa_id);
 
@@ -580,9 +533,7 @@ class GeneratorPlanu {
         return false;
     }
 
-    /**
-     * Próbuje zamienić lekcje w obrębie tej samej klasy
-     */
+
     private function probaSwapWewnatrzKlasy($klasa_id, $dzien_target, $lekcja_nr_target) {
         // Znajdź wszystkie zajęte sloty tej klasy
         foreach ($this->dni as $dzien_source) {
@@ -602,9 +553,7 @@ class GeneratorPlanu {
         return false;
     }
 
-    /**
-     * Sprawdza czy można zamienić dwa sloty
-     */
+
     private function czyMoznaZamienicSloty($klasa_id, $dzien1, $lekcja1, $dzien2, $lekcja2) {
         // Slot 2 musi być pusty
         if (isset($this->class_schedule[$klasa_id][$dzien2][$lekcja2])) {
@@ -629,9 +578,7 @@ class GeneratorPlanu {
         return true;
     }
 
-    /**
-     * Zamienia dwa sloty miejscami
-     */
+
     private function zamienSloty($klasa_id, $dzien1, $lekcja1, $dzien2, $lekcja2) {
         // Pobierz dane lekcji
         $lekcja_data = $this->class_schedule[$klasa_id][$dzien1][$lekcja1];
@@ -675,9 +622,7 @@ class GeneratorPlanu {
         $this->occurrences[$klasa_id][$dzien2][$family]++;
     }
 
-    /**
-     * Próbuje przesunąć lekcje w obrębie dnia
-     */
+
     private function probaPrzesuniecia($klasa_id, $dzien, $lekcja_nr_target) {
         // Znajdź wszystkie lekcje w tym dniu
         if (!isset($this->class_schedule[$klasa_id][$dzien])) {
@@ -711,13 +656,6 @@ class GeneratorPlanu {
         return false;
     }
 
-    // =====================================================================
-    // KROK 6: ZAPIS DO BAZY DANYCH
-    // =====================================================================
-
-    /**
-     * Zapisuje wygenerowany plan do bazy danych
-     */
     private function zapiszDoBazy($uzytkownik_id = 1) {
         $start_time = microtime(true);
 
@@ -807,13 +745,7 @@ class GeneratorPlanu {
         }
     }
 
-    // =====================================================================
-    // FUNKCJE POMOCNICZE
-    // =====================================================================
 
-    /**
-     * Oblicza godziny rozpoczęcia i zakończenia lekcji
-     */
     private function obliczGodziny($numer_lekcji) {
         $start_timestamp = strtotime($this->godzina_rozpoczecia);
         $minutes_offset = ($numer_lekcji - 1) * ($this->czas_lekcji + $this->czas_przerwy);
@@ -824,9 +756,6 @@ class GeneratorPlanu {
         return ['start' => $start, 'koniec' => $end];
     }
 
-    /**
-     * Generuje plan dzienny na cały rok szkolny
-     */
     private function generujPlanRoczny() {
         $rok_biezacy = date('Y');
         $rok_nastepny = $rok_biezacy + 1;
@@ -890,9 +819,6 @@ class GeneratorPlanu {
         }
     }
 
-    /**
-     * Mapowanie numeru dnia na nazwę
-     */
     private function getDzienNazwa($day_number) {
         $mapping = [
             1 => 'poniedzialek',
@@ -904,15 +830,6 @@ class GeneratorPlanu {
         return $mapping[$day_number] ?? '';
     }
 
-    // =====================================================================
-    // GŁÓWNA FUNKCJA GENERUJĄCA
-    // =====================================================================
-
-    /**
-     * Główna funkcja generująca plan
-     * @param int $uzytkownik_id ID użytkownika generującego plan
-     * @return array Status generowania
-     */
     public function generujPlan($uzytkownik_id = 1) {
         // KROK 1: Walidacja
         $walidacja = $this->walidujDane();
