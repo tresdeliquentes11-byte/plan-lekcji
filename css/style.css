@@ -381,7 +381,7 @@ table tbody tr:last-child td {
 
 .stat-card {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
+    color: black;
     padding: 25px;
     border-radius: 10px;
     text-align: center;
