@@ -65,7 +65,7 @@ class EdytorPlanu {
             $sala_id = $dane['sala_id'] ?: null;
 
             $stmt->bind_param(
-                "isisssii",
+                "isiissii",
                 $dane['klasa_id'],
                 $dzien_tygodnia,
                 $dane['numer_lekcji'],
@@ -91,7 +91,7 @@ class EdytorPlanu {
             ");
 
             $stmt->bind_param(
-                "isisssiii",
+                "isiissiiii",
                 $plan_lekcji_id,
                 $dane['data'],
                 $dane['klasa_id'],
