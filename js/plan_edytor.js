@@ -1,13 +1,8 @@
-/**
- * Edytor Planu Lekcji - JavaScript
- *
- * Funkcjonalności:
- * - Drag & Drop przesuwanie lekcji
- * - Dodawanie nowych lekcji
- * - Edycja istniejących lekcji
- * - Usuwanie lekcji
- * - Sprawdzanie konfliktów
- * - Cofanie zmian (undo)
+/*
+ * © 2025 TresDeliquentes. All rights reserved.
+ * LibreLessons jest licencjonowane na zasadach TEUL – do użytku edukacyjnego.
+ * Zakazana jest dystrybucja, publikacja i komercyjne wykorzystanie bez zgody autora.
+ * Korzystając z kodu, akceptujesz warunki licencji (LICENSE.md).
  */
 
 class PlanEdytor {
