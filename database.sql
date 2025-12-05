@@ -151,7 +151,10 @@ CREATE TABLE `plan_dzienny` (
   `nauczyciel_id` int(11) NOT NULL,
   `sala_id` int(11) DEFAULT NULL,
   `czy_zastepstwo` tinyint(1) DEFAULT 0,
-  `oryginalny_nauczyciel_id` int(11) DEFAULT NULL
+  `oryginalny_nauczyciel_id` int(11) DEFAULT NULL,
+  `utworzony_recznie` tinyint(1) DEFAULT 0,
+  `ostatnia_modyfikacja` timestamp NULL DEFAULT NULL,
+  `zmodyfikowany_przez` int(11) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
@@ -341,6 +344,41 @@ CREATE TABLE `zastepstwa` (
   `data_utworzenia` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+-- --------------------------------------------------------
+
+--
+-- Struktura tabeli dla tabeli `historia_zmian_planu`
+--
+
+CREATE TABLE `historia_zmian_planu` (
+  `id` int(11) NOT NULL,
+  `plan_dzienny_id` int(11) DEFAULT NULL,
+  `typ_zmiany` enum('utworzenie','edycja','usuniecie','przesuniecie') NOT NULL,
+  `uzytkownik_id` int(11) NOT NULL,
+  `stan_przed` text DEFAULT NULL COMMENT 'JSON snapshot before change',
+  `stan_po` text DEFAULT NULL COMMENT 'JSON snapshot after change',
+  `data_zmiany` timestamp NOT NULL DEFAULT current_timestamp(),
+  `ip_address` varchar(45) DEFAULT NULL,
+  `komentarz` text DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Struktura tabeli dla tabeli `konflikty_planu`
+--
+
+CREATE TABLE `konflikty_planu` (
+  `id` int(11) NOT NULL,
+  `plan_dzienny_id` int(11) NOT NULL,
+  `typ_konfliktu` enum('nauczyciel','sala','klasa','wymiar_godzin','dostepnosc') NOT NULL,
+  `opis` text NOT NULL,
+  `konflikty_z` text DEFAULT NULL COMMENT 'JSON array of conflicting plan_dzienny_id',
+  `czy_rozwiazany` tinyint(1) DEFAULT 0,
+  `data_wykrycia` timestamp NOT NULL DEFAULT current_timestamp(),
+  `data_rozwiazania` timestamp NULL DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
 --
 -- Indeksy dla zrzutów tabel
 --
@@ -522,6 +560,26 @@ ALTER TABLE `zastepstwa`
   ADD KEY `nauczyciel_zastepujacy_id` (`nauczyciel_zastepujacy_id`);
 
 --
+-- Indeksy dla tabeli `historia_zmian_planu`
+--
+ALTER TABLE `historia_zmian_planu`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `plan_dzienny_id` (`plan_dzienny_id`),
+  ADD KEY `uzytkownik_id` (`uzytkownik_id`),
+  ADD KEY `data_zmiany` (`data_zmiany`),
+  ADD KEY `typ_zmiany` (`typ_zmiany`);
+
+--
+-- Indeksy dla tabeli `konflikty_planu`
+--
+ALTER TABLE `konflikty_planu`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `plan_dzienny_id` (`plan_dzienny_id`),
+  ADD KEY `typ_konfliktu` (`typ_konfliktu`),
+  ADD KEY `czy_rozwiazany` (`czy_rozwiazany`),
+  ADD KEY `data_wykrycia` (`data_wykrycia`);
+
+--
 -- AUTO_INCREMENT for dumped tables
 --
 
@@ -652,6 +710,18 @@ ALTER TABLE `zastepstwa`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=12;
 
 --
+-- AUTO_INCREMENT for table `historia_zmian_planu`
+--
+ALTER TABLE `historia_zmian_planu`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `konflikty_planu`
+--
+ALTER TABLE `konflikty_planu`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
 -- Constraints for dumped tables
 --
 
@@ -709,7 +779,8 @@ ALTER TABLE `plan_dzienny`
   ADD CONSTRAINT `plan_dzienny_ibfk_3` FOREIGN KEY (`przedmiot_id`) REFERENCES `przedmioty` (`id`) ON DELETE CASCADE,
   ADD CONSTRAINT `plan_dzienny_ibfk_4` FOREIGN KEY (`nauczyciel_id`) REFERENCES `nauczyciele` (`id`) ON DELETE CASCADE,
   ADD CONSTRAINT `plan_dzienny_ibfk_5` FOREIGN KEY (`sala_id`) REFERENCES `sale` (`id`) ON DELETE SET NULL,
-  ADD CONSTRAINT `plan_dzienny_ibfk_6` FOREIGN KEY (`oryginalny_nauczyciel_id`) REFERENCES `nauczyciele` (`id`) ON DELETE SET NULL;
+  ADD CONSTRAINT `plan_dzienny_ibfk_6` FOREIGN KEY (`oryginalny_nauczyciel_id`) REFERENCES `nauczyciele` (`id`) ON DELETE SET NULL,
+  ADD CONSTRAINT `plan_dzienny_ibfk_7` FOREIGN KEY (`zmodyfikowany_przez`) REFERENCES `uzytkownicy` (`id`) ON DELETE SET NULL;
 
 --
 -- Constraints for table `plan_lekcji`
@@ -767,6 +838,19 @@ ALTER TABLE `zastepstwa`
   ADD CONSTRAINT `zastepstwa_ibfk_1` FOREIGN KEY (`plan_dzienny_id`) REFERENCES `plan_dzienny` (`id`) ON DELETE CASCADE,
   ADD CONSTRAINT `zastepstwa_ibfk_2` FOREIGN KEY (`nieobecnosc_id`) REFERENCES `nieobecnosci` (`id`) ON DELETE CASCADE,
   ADD CONSTRAINT `zastepstwa_ibfk_3` FOREIGN KEY (`nauczyciel_zastepujacy_id`) REFERENCES `nauczyciele` (`id`) ON DELETE CASCADE;
+
+--
+-- Constraints for table `historia_zmian_planu`
+--
+ALTER TABLE `historia_zmian_planu`
+  ADD CONSTRAINT `historia_zmian_planu_ibfk_1` FOREIGN KEY (`plan_dzienny_id`) REFERENCES `plan_dzienny` (`id`) ON DELETE SET NULL,
+  ADD CONSTRAINT `historia_zmian_planu_ibfk_2` FOREIGN KEY (`uzytkownik_id`) REFERENCES `uzytkownicy` (`id`) ON DELETE CASCADE;
+
+--
+-- Constraints for table `konflikty_planu`
+--
+ALTER TABLE `konflikty_planu`
+  ADD CONSTRAINT `konflikty_planu_ibfk_1` FOREIGN KEY (`plan_dzienny_id`) REFERENCES `plan_dzienny` (`id`) ON DELETE CASCADE;
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
