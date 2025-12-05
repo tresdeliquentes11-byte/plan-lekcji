@@ -12,6 +12,7 @@
 
 class PlanEdytor {
     constructor() {
+        console.log('PlanEdytor: Inicjalizacja...');
         this.apiUrl = 'plan_edycja.php';
         this.currentKlasaId = null;
         this.currentDataOd = null;
@@ -23,13 +24,33 @@ class PlanEdytor {
     }
 
     init() {
+        console.log('PlanEdytor: init()');
         // Pobierz dane do formularza (klasy, przedmioty, etc.)
         this.zaladujDaneFormularza();
 
         // Eventy dla kontrolek
-        document.getElementById('zaladuj-plan').addEventListener('click', () => this.zaladujPlan());
-        document.getElementById('cofnij-zmiane').addEventListener('click', () => this.cofnijZmiane());
-        document.getElementById('sprawdz-konflikty-btn').addEventListener('click', () => this.sprawdzWszystkieKonflikty());
+        const zaladujBtn = document.getElementById('zaladuj-plan');
+        const cofnijBtn = document.getElementById('cofnij-zmiane');
+        const konfliktBtn = document.getElementById('sprawdz-konflikty-btn');
+
+        console.log('Elementy DOM:', { zaladujBtn, cofnijBtn, konfliktBtn });
+
+        if (zaladujBtn) {
+            zaladujBtn.addEventListener('click', () => {
+                console.log('Kliknięto przycisk Załaduj Plan');
+                this.zaladujPlan();
+            });
+        } else {
+            console.error('Nie znaleziono przycisku zaladuj-plan');
+        }
+
+        if (cofnijBtn) {
+            cofnijBtn.addEventListener('click', () => this.cofnijZmiane());
+        }
+
+        if (konfliktBtn) {
+            konfliktBtn.addEventListener('click', () => this.sprawdzWszystkieKonflikty());
+        }
 
         // Modal
         const modal = document.getElementById('lekcja-modal');
@@ -60,12 +81,17 @@ class PlanEdytor {
 
     async zaladujDaneFormularza() {
         try {
+            console.log('Ładowanie danych formularza...');
             const response = await fetch(`${this.apiUrl}?action=pobierz_dane_formularza`);
+            console.log('Response status:', response.status);
             const data = await response.json();
+            console.log('Dane formularza:', data);
 
             if (data.success) {
                 this.daneFormularza = data;
                 this.wypelnijSelecty();
+            } else {
+                console.error('Błąd API:', data);
             }
         } catch (error) {
             console.error('Błąd podczas ładowania danych formularza:', error);
@@ -98,9 +124,12 @@ class PlanEdytor {
     }
 
     async zaladujPlan() {
+        console.log('zaladujPlan() wywołane');
         const klasaId = document.getElementById('klasa-select').value;
         const dataOd = document.getElementById('data-od').value;
         const dataDo = document.getElementById('data-do').value;
+
+        console.log('Parametry:', { klasaId, dataOd, dataDo });
 
         if (!klasaId || !dataOd || !dataDo) {
             this.pokazAlert('Wybierz klasę i okres', 'error');
@@ -114,17 +143,24 @@ class PlanEdytor {
         this.pokazLoader(true);
 
         try {
-            const response = await fetch(
-                `${this.apiUrl}?action=pobierz_plan&klasa_id=${klasaId}&data_od=${dataOd}&data_do=${dataDo}`
-            );
+            const url = `${this.apiUrl}?action=pobierz_plan&klasa_id=${klasaId}&data_od=${dataOd}&data_do=${dataDo}`;
+            console.log('Fetching URL:', url);
+
+            const response = await fetch(url);
+            console.log('Response status:', response.status);
+
             const data = await response.json();
+            console.log('Response data:', data);
 
             if (data.success) {
+                console.log('Renderowanie planu z', data.plan.length, 'lekcjami');
                 this.renderujPlan(data.plan);
             } else {
+                console.error('Błąd API:', data.message);
                 this.pokazAlert(data.message, 'error');
             }
         } catch (error) {
+            console.error('Błąd podczas ładowania planu:', error);
             this.pokazAlert('Błąd podczas ładowania planu: ' + error.message, 'error');
         } finally {
             this.pokazLoader(false);
@@ -589,7 +625,14 @@ class PlanEdytor {
     }
 
     pokazAlert(message, type = 'info', raw = false) {
+        console.log('pokazAlert:', message, type);
         const container = document.getElementById('alert-container');
+
+        if (!container) {
+            console.error('Nie znaleziono alert-container');
+            return;
+        }
+
         const alertClass = type === 'success' ? 'alert-success' :
                           type === 'error' ? 'alert-error' :
                           type === 'warning' ? 'alert-warning' : 'alert-info';

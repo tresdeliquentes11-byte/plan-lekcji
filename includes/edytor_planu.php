@@ -120,11 +120,10 @@ class EdytorPlanu {
 
             // Loguj operację
             loguj_aktywnosc(
-                $this->conn,
                 $uzytkownik_id,
                 'dodanie_lekcji_recznie',
                 "Dodano lekcję: klasa_id={$dane['klasa_id']}, data={$dane['data']}, numer_lekcji={$dane['numer_lekcji']}",
-                json_encode(['plan_dzienny_id' => $plan_dzienny_id, 'dane' => $dane])
+                ['plan_dzienny_id' => $plan_dzienny_id, 'dane' => $dane]
             );
 
             $this->conn->commit();
@@ -247,11 +246,10 @@ class EdytorPlanu {
 
             // Loguj operację
             loguj_aktywnosc(
-                $this->conn,
                 $uzytkownik_id,
                 'edycja_lekcji',
                 "Edytowano lekcję ID=$plan_dzienny_id",
-                json_encode(['przed' => $obecny_stan, 'po' => $nowe_dane])
+                ['przed' => $obecny_stan, 'po' => $nowe_dane]
             );
 
             $this->conn->commit();
@@ -315,11 +313,10 @@ class EdytorPlanu {
 
             // Loguj operację
             loguj_aktywnosc(
-                $this->conn,
                 $uzytkownik_id,
                 'usuniecie_lekcji',
                 "Usunięto lekcję ID=$plan_dzienny_id",
-                json_encode($lekcja)
+                $lekcja
             );
 
             $this->conn->commit();
@@ -447,11 +444,10 @@ class EdytorPlanu {
 
             // Loguj operację
             loguj_aktywnosc(
-                $this->conn,
                 $uzytkownik_id,
                 'przesuniecie_lekcji',
                 "Przeniesiono lekcję ID=$plan_dzienny_id",
-                json_encode(['przed' => $obecny_stan, 'po' => $dane_walidacja])
+                ['przed' => $obecny_stan, 'po' => $dane_walidacja]
             );
 
             $this->conn->commit();
@@ -945,11 +941,10 @@ class EdytorPlanu {
 
             // Loguj cofnięcie
             loguj_aktywnosc(
-                $this->conn,
                 $uzytkownik_id,
                 'cofniecie_zmiany',
                 "Cofnięto zmianę typu: $typ_zmiany",
-                json_encode($zmiana)
+                $zmiana
             );
 
             $this->conn->commit();
