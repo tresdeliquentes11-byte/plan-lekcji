@@ -25,29 +25,31 @@ $klasa_id = isset($_GET['klasa_id']) ? (int)$_GET['klasa_id'] : null;
     <link rel="stylesheet" href="../css/style.css">
     <link rel="stylesheet" href="../css/admin.css">
     <style>
-        /* Dodatkowe style dla edytora */
+        /* Dodatkowe style dla edytora - modern gradient design */
         .editor-header {
-            background: #f8f9fa;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 25px;
             display: flex;
             justify-content: space-between;
             align-items: center;
             flex-wrap: wrap;
             gap: 15px;
+            border: 1px solid rgba(102, 126, 234, 0.2);
+            box-shadow: 0 2px 10px rgba(102, 126, 234, 0.1);
         }
 
         .editor-controls {
             display: flex;
-            gap: 10px;
+            gap: 12px;
             align-items: center;
             flex-wrap: wrap;
         }
 
         .editor-actions {
             display: flex;
-            gap: 10px;
+            gap: 12px;
             align-items: center;
         }
 
@@ -56,87 +58,106 @@ $klasa_id = isset($_GET['klasa_id']) ? (int)$_GET['klasa_id'] : null;
             border-collapse: collapse;
             margin-top: 20px;
             font-size: 14px;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.15);
         }
 
         .schedule-editor th,
         .schedule-editor td {
-            border: 1px solid #ddd;
-            padding: 10px;
+            border: 1px solid rgba(102, 126, 234, 0.15);
+            padding: 12px;
             text-align: center;
         }
 
         .schedule-editor th {
-            background-color: #4CAF50;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            font-weight: bold;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 13px;
+            letter-spacing: 0.5px;
+            padding: 15px 12px;
         }
 
         .schedule-editor .lesson-cell {
-            min-height: 80px;
+            min-height: 85px;
             position: relative;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             vertical-align: top;
             background: white;
         }
 
         .schedule-editor .lesson-cell.empty {
-            background: #f9f9f9;
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.02) 0%, rgba(118, 75, 162, 0.02) 100%);
         }
 
         .schedule-editor .lesson-cell.empty:hover {
-            background: #e3f2fd;
-            border-color: #2196F3;
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.08) 0%, rgba(118, 75, 162, 0.08) 100%);
+            border-color: #667eea;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+        }
+
+        .schedule-editor .lesson-cell:not(.empty) {
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%);
         }
 
         .schedule-editor .lesson-cell:not(.empty):hover {
-            background-color: #f0f8ff;
-            border-color: #4CAF50;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.12) 0%, rgba(118, 75, 162, 0.12) 100%);
+            border-color: #667eea;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.25);
         }
 
         .schedule-editor .lesson-cell.dragging {
             opacity: 0.5;
-            background: #ffebee;
+            background: linear-gradient(135deg, rgba(255, 87, 34, 0.1) 0%, rgba(244, 67, 54, 0.1) 100%);
+            transform: scale(0.98);
         }
 
         .schedule-editor .lesson-cell.drag-over {
-            background: #e8f5e9;
-            border: 2px dashed #4CAF50;
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.15) 0%, rgba(118, 75, 162, 0.15) 100%);
+            border: 2px dashed #667eea;
+            box-shadow: inset 0 0 0 2px rgba(102, 126, 234, 0.3);
         }
 
         .lesson-content {
-            padding: 5px;
+            padding: 8px;
             font-size: 12px;
         }
 
         .lesson-content .przedmiot {
-            font-weight: bold;
-            color: #333;
+            font-weight: 600;
+            color: #667eea;
             display: block;
-            margin-bottom: 3px;
+            margin-bottom: 5px;
+            font-size: 13px;
         }
 
         .lesson-content .nauczyciel {
-            color: #666;
+            color: #555;
             display: block;
-            margin-bottom: 3px;
+            margin-bottom: 4px;
+            font-size: 12px;
         }
 
         .lesson-content .sala {
             color: #888;
             font-size: 11px;
             display: block;
+            font-style: italic;
         }
 
         .lesson-actions {
             position: absolute;
-            top: 5px;
-            right: 5px;
+            top: 6px;
+            right: 6px;
             opacity: 0;
-            transition: opacity 0.2s;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             display: flex;
-            gap: 3px;
+            gap: 4px;
         }
 
         .lesson-cell:hover .lesson-actions {
@@ -145,31 +166,37 @@ $klasa_id = isset($_GET['klasa_id']) ? (int)$_GET['klasa_id'] : null;
 
         .lesson-actions button {
             background: white;
-            border: 1px solid #ddd;
-            border-radius: 3px;
+            border: 1px solid rgba(102, 126, 234, 0.3);
+            border-radius: 6px;
             cursor: pointer;
-            padding: 3px 6px;
+            padding: 4px 8px;
             font-size: 14px;
+            transition: all 0.2s;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
         }
 
         .lesson-actions button:hover {
-            background: #f5f5f5;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-color: transparent;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
         }
 
         .lesson-actions .edit-btn:hover {
-            color: #2196F3;
-            border-color: #2196F3;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         }
 
         .lesson-actions .delete-btn:hover {
-            color: #f44336;
-            border-color: #f44336;
+            background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);
+            border-color: transparent;
         }
 
         .time-column {
-            background-color: #f5f5f5;
-            font-weight: bold;
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.08) 0%, rgba(118, 75, 162, 0.08) 100%);
+            font-weight: 600;
             width: 120px;
+            color: #667eea;
         }
 
         /* Modal */
@@ -181,94 +208,172 @@ $klasa_id = isset($_GET['klasa_id']) ? (int)$_GET['klasa_id'] : null;
             top: 0;
             width: 100%;
             height: 100%;
-            background-color: rgba(0,0,0,0.5);
+            background-color: rgba(102, 126, 234, 0.3);
+            backdrop-filter: blur(4px);
             overflow: auto;
+            animation: fadeIn 0.3s;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
         }
 
         .modal-content {
             background-color: white;
             margin: 50px auto;
-            padding: 30px;
-            border-radius: 8px;
+            padding: 35px;
+            border-radius: 16px;
             width: 90%;
             max-width: 500px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            box-shadow: 0 10px 40px rgba(102, 126, 234, 0.25);
+            animation: slideUp 0.3s;
+            border: 1px solid rgba(102, 126, 234, 0.1);
+        }
+
+        @keyframes slideUp {
+            from {
+                transform: translateY(30px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
         }
 
         .modal-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 20px;
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid transparent;
+            border-image: linear-gradient(90deg, #667eea 0%, #764ba2 100%) 1;
         }
 
         .modal-header h3 {
             margin: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            font-weight: 600;
         }
 
         .close {
-            color: #aaa;
+            color: #999;
             font-size: 28px;
             font-weight: bold;
             cursor: pointer;
+            transition: all 0.2s;
+            line-height: 1;
         }
 
         .close:hover {
-            color: black;
+            color: #667eea;
+            transform: rotate(90deg);
         }
 
         .form-group {
-            margin-bottom: 15px;
+            margin-bottom: 18px;
         }
 
         .form-group label {
             display: block;
-            margin-bottom: 5px;
-            font-weight: bold;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #555;
+            font-size: 14px;
         }
 
         .form-group select,
         .form-group input {
             width: 100%;
-            padding: 8px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
+            padding: 10px 12px;
+            border: 2px solid rgba(102, 126, 234, 0.2);
+            border-radius: 8px;
+            transition: all 0.3s;
+            font-size: 14px;
+        }
+
+        .form-group select:focus,
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
 
         .alert {
-            padding: 12px 15px;
-            border-radius: 4px;
-            margin: 10px 0;
+            padding: 14px 16px;
+            border-radius: 10px;
+            margin: 12px 0;
+            font-size: 14px;
+            font-weight: 500;
+            animation: slideIn 0.3s;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(-10px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
         }
 
         .alert-success {
-            background-color: #d4edda;
-            border: 1px solid #c3e6cb;
-            color: #155724;
+            background: linear-gradient(135deg, rgba(76, 175, 80, 0.1) 0%, rgba(56, 142, 60, 0.1) 100%);
+            border: 2px solid rgba(76, 175, 80, 0.3);
+            color: #2e7d32;
         }
 
         .alert-error {
-            background-color: #f8d7da;
-            border: 1px solid #f5c6cb;
-            color: #721c24;
+            background: linear-gradient(135deg, rgba(244, 67, 54, 0.1) 0%, rgba(211, 47, 47, 0.1) 100%);
+            border: 2px solid rgba(244, 67, 54, 0.3);
+            color: #c62828;
         }
 
         .alert-warning {
-            background-color: #fff3cd;
-            border: 1px solid #ffeaa7;
-            color: #856404;
+            background: linear-gradient(135deg, rgba(255, 152, 0, 0.1) 0%, rgba(245, 124, 0, 0.1) 100%);
+            border: 2px solid rgba(255, 152, 0, 0.3);
+            color: #ef6c00;
         }
 
         .conflicts-list {
-            max-height: 300px;
+            max-height: 350px;
             overflow-y: auto;
+            padding-right: 5px;
+        }
+
+        .conflicts-list::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .conflicts-list::-webkit-scrollbar-track {
+            background: rgba(102, 126, 234, 0.1);
+            border-radius: 3px;
+        }
+
+        .conflicts-list::-webkit-scrollbar-thumb {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 3px;
         }
 
         .conflict-item {
-            padding: 10px;
-            margin-bottom: 10px;
+            padding: 12px;
+            margin-bottom: 12px;
             border-left: 4px solid;
-            background: #f9f9f9;
+            background: rgba(0, 0, 0, 0.02);
+            border-radius: 0 8px 8px 0;
+            transition: all 0.2s;
+        }
+
+        .conflict-item:hover {
+            transform: translateX(4px);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
         }
 
         .conflict-nauczyciel {
@@ -280,7 +385,7 @@ $klasa_id = isset($_GET['klasa_id']) ? (int)$_GET['klasa_id'] : null;
         }
 
         .conflict-klasa {
-            border-color: #2196F3;
+            border-color: #667eea;
         }
 
         .conflict-dostepnosc {
@@ -293,12 +398,12 @@ $klasa_id = isset($_GET['klasa_id']) ? (int)$_GET['klasa_id'] : null;
 
         .loader {
             display: none;
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #4CAF50;
+            border: 4px solid rgba(102, 126, 234, 0.2);
+            border-top: 4px solid #667eea;
             border-radius: 50%;
-            width: 30px;
-            height: 30px;
-            animation: spin 1s linear infinite;
+            width: 40px;
+            height: 40px;
+            animation: spin 0.8s linear infinite;
             margin: 20px auto;
         }
 
@@ -308,57 +413,88 @@ $klasa_id = isset($_GET['klasa_id']) ? (int)$_GET['klasa_id'] : null;
         }
 
         .btn {
-            padding: 8px 16px;
+            padding: 10px 20px;
             border: none;
-            border-radius: 4px;
+            border-radius: 8px;
             cursor: pointer;
             font-size: 14px;
-            transition: all 0.2s;
+            font-weight: 600;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.3);
+            transform: translate(-50%, -50%);
+            transition: width 0.6s, height 0.6s;
+        }
+
+        .btn:hover::before {
+            width: 300px;
+            height: 300px;
         }
 
         .btn-primary {
-            background-color: #4CAF50;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
         }
 
         .btn-primary:hover {
-            background-color: #45a049;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-primary:active {
+            transform: translateY(0);
         }
 
         .btn-warning {
-            background-color: #ff9800;
+            background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%);
             color: white;
         }
 
         .btn-warning:hover {
-            background-color: #e68900;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(255, 152, 0, 0.4);
         }
 
         .btn-info {
-            background-color: #2196F3;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
         }
 
         .btn-info:hover {
-            background-color: #0b7dda;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
         }
 
         .btn-success {
-            background-color: #4CAF50;
+            background: linear-gradient(135deg, #4CAF50 0%, #388e3c 100%);
             color: white;
         }
 
         .btn-success:hover {
-            background-color: #45a049;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(76, 175, 80, 0.4);
         }
 
         .btn-secondary {
-            background-color: #6c757d;
+            background: linear-gradient(135deg, #6c757d 0%, #5a6268 100%);
             color: white;
         }
 
         .btn-secondary:hover {
-            background-color: #5a6268;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(108, 117, 125, 0.4);
         }
     </style>
 </head>
