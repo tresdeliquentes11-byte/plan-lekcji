@@ -25,16 +25,22 @@ header('Content-Type: application/json; charset=utf-8');
 $uzytkownik_id = $_SESSION['user_id'];
 $edytor = new EdytorPlanu($conn);
 
-// Pobierz akcję z parametrów
-$action = $_GET['action'] ?? $_POST['action'] ?? null;
+// Parsuj dane wejściowe
+$input = null;
+$raw_input = file_get_contents('php://input');
+
+if (!empty($raw_input)) {
+    $input = json_decode($raw_input, true);
+}
+
+// Pobierz akcję z parametrów (GET ma priorytet, potem JSON body, potem POST)
+$action = $_GET['action'] ?? ($input['action'] ?? $_POST['action'] ?? null);
 
 try {
     switch ($action) {
 
         case 'dodaj_lekcje':
             // Dodaj nową lekcję
-            $input = json_decode(file_get_contents('php://input'), true);
-
             if (!$input) {
                 $input = $_POST;
             }
@@ -54,8 +60,6 @@ try {
 
         case 'edytuj_lekcje':
             // Edytuj istniejącą lekcję
-            $input = json_decode(file_get_contents('php://input'), true);
-
             if (!$input) {
                 $input = $_POST;
             }
@@ -79,8 +83,6 @@ try {
 
         case 'usun_lekcje':
             // Usuń lekcję
-            $input = json_decode(file_get_contents('php://input'), true);
-
             if (!$input) {
                 $input = $_POST;
             }
@@ -98,8 +100,6 @@ try {
 
         case 'przenies_lekcje':
             // Przenieś lekcję (drag & drop)
-            $input = json_decode(file_get_contents('php://input'), true);
-
             if (!$input) {
                 $input = $_POST;
             }
@@ -122,8 +122,6 @@ try {
 
         case 'sprawdz_konflikty':
             // Sprawdź konflikty dla danej lekcji
-            $input = json_decode(file_get_contents('php://input'), true);
-
             if (!$input) {
                 $input = $_POST;
             }
