@@ -85,7 +85,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </head>
 <body>
     <div class="login-container">
-        <h2>System Planu Lekcji</h2>
+        <h2>LibreLessons</h2>
         
         <?php if ($error): ?>
             <div class="alert alert-error"><?php echo e($error); ?></div>
