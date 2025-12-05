@@ -14,6 +14,36 @@
  * - pobierz_konflikty - lista wszystkich konfliktów
  */
 
+// Custom error handler - zwraca błędy jako JSON
+set_error_handler(function($errno, $errstr, $errfile, $errline) {
+    http_response_code(500);
+    echo json_encode([
+        'success' => false,
+        'message' => 'PHP Error: ' . $errstr,
+        'error_details' => [
+            'file' => $errfile,
+            'line' => $errline,
+            'type' => $errno
+        ]
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+});
+
+// Custom exception handler
+set_exception_handler(function($exception) {
+    http_response_code(500);
+    echo json_encode([
+        'success' => false,
+        'message' => 'Uncaught Exception: ' . $exception->getMessage(),
+        'error_details' => [
+            'file' => $exception->getFile(),
+            'line' => $exception->getLine(),
+            'trace' => $exception->getTraceAsString()
+        ]
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+});
+
 require_once __DIR__ . '/../includes/config.php';
 require_once __DIR__ . '/../includes/edytor_planu.php';
 
