@@ -1,18 +1,15 @@
 <?php
-/**
- * Funkcje pomocnicze dla panelu administratora
- * Zawiera funkcje do zarządzania użytkownikami, logowania aktywności i statystyk
+/*
+ * © 2025 TresDeliquentes. All rights reserved.
+ * LibreLessons jest licencjonowane na zasadach TEUL – do użytku edukacyjnego.
+ * Zakazana jest dystrybucja, publikacja i komercyjne wykorzystanie bez zgody autora.
+ * Korzystając z kodu, akceptujesz warunki licencji (LICENSE.md).
  */
 
 require_once 'config.php';
 
-// ============================================
-// FUNKCJE LOGOWANIA AKTYWNOŚCI
-// ============================================
+// Loguje aktywność użytkownika
 
-/**
- * Loguje aktywność użytkownika
- */
 function loguj_aktywnosc($uzytkownik_id, $typ_akcji, $opis, $dodatkowe_dane = null) {
     global $conn;
 

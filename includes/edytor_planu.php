@@ -1,12 +1,9 @@
 <?php
-/**
- * Klasa EdytorPlanu - obsługuje manualne tworzenie i edycję planu lekcji
- *
- * Funkcjonalności:
- * - Dodawanie, edycja, usuwanie, przesuwanie lekcji
- * - Walidacja konfliktów (nauczyciel, sala, klasa, wymiar godzin, dostępność)
- * - Historia zmian z możliwością cofnięcia (undo)
- * - Transakcyjność wszystkich operacji
+/*
+ * © 2025 TresDeliquentes. All rights reserved.
+ * LibreLessons jest licencjonowane na zasadach TEUL – do użytku edukacyjnego.
+ * Zakazana jest dystrybucja, publikacja i komercyjne wykorzystanie bez zgody autora.
+ * Korzystając z kodu, akceptujesz warunki licencji (LICENSE.md).
  */
 
 require_once __DIR__ . '/dostepnosc_helpers.php';

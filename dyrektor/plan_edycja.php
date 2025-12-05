@@ -1,17 +1,9 @@
 <?php
-/**
- * API Endpoint dla edycji planu lekcji
- *
- * Obsługuje operacje:
- * - dodaj_lekcje - dodanie nowej lekcji
- * - edytuj_lekcje - edycja istniejącej lekcji
- * - usun_lekcje - usunięcie lekcji
- * - przenies_lekcje - przesunięcie lekcji (drag & drop)
- * - sprawdz_konflikty - sprawdzenie konfliktów
- * - pobierz_plan - pobranie planu do edycji
- * - pobierz_historie - pobranie historii zmian
- * - cofnij_zmiane - cofnięcie ostatniej zmiany (undo)
- * - pobierz_konflikty - lista wszystkich konfliktów
+/*
+ * © 2025 TresDeliquentes. All rights reserved.
+ * LibreLessons jest licencjonowane na zasadach TEUL – do użytku edukacyjnego.
+ * Zakazana jest dystrybucja, publikacja i komercyjne wykorzystanie bez zgody autora.
+ * Korzystając z kodu, akceptujesz warunki licencji (LICENSE.md).
  */
 
 // Custom error handler - zwraca błędy jako JSON

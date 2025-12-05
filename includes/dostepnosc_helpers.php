@@ -1,14 +1,9 @@
 <?php
-/**
- * Funkcje pomocnicze do sprawdzania godzin pracy nauczycieli
- */
-
-/**
- * Oblicza rzeczywisty czas rozpoczęcia i zakończenia lekcji
- *
- * @param int $numer_lekcji Numer lekcji (1-10)
- * @param mysqli $conn Połączenie z bazą danych
- * @return array ['start' => TIME, 'koniec' => TIME]
+/*
+ * © 2025 TresDeliquentes. All rights reserved.
+ * LibreLessons jest licencjonowane na zasadach TEUL – do użytku edukacyjnego.
+ * Zakazana jest dystrybucja, publikacja i komercyjne wykorzystanie bez zgody autora.
+ * Korzystając z kodu, akceptujesz warunki licencji (LICENSE.md).
  */
 function oblicz_czas_lekcji($numer_lekcji, $conn) {
     // Pobierz ustawienia

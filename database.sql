@@ -1,9 +1,7 @@
--- phpMyAdmin SQL Dump
--- version 5.2.1
--- https://www.phpmyadmin.net/
---
--- Host: 127.0.0.1
--- Generation Time: Dec 03, 2025 at 09:32 PM
+-- © 2025 TresDeliquentes. Wszystkie prawa zastrzeżone.
+-- LibreLessons działa na licencji TEUL (użytek edukacyjny).
+-- Zakazana dystrybucja, publikacja i użycie komercyjne bez zgody autora.
+
 -- Wersja serwera: 10.4.32-MariaDB
 -- Wersja PHP: 8.2.12
 
