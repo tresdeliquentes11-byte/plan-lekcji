@@ -1,6 +1,7 @@
 # LibreLessons - Dokumentacja
 
- 
+ <img width="1536" height="1024" alt="LogoLibreLessons" src="https://github.com/user-attachments/assets/10d83a08-33b2-4f67-8700-5f1e6d579213" />
+
 
 ## Co to jest LibreLessons?
 
