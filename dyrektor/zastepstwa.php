@@ -24,8 +24,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['dodaj_nieobecnosc']))
         $wynik = $generator->generujZastepstwa($nieobecnosc_id);
         
         $message = "Nieobecność została dodana. Utworzono {$wynik['utworzone']} zastępstw.";
+        if (count($wynik['pominiete']) > 0) {
+            $message .= " Pominięto " . count($wynik['pominiete']) . " lekcji (początkowe/końcowe godziny klasy).";
+        }
         if (count($wynik['niemozliwe']) > 0) {
-            $message .= " Nie udało się utworzyć zastępstw dla " . count($wynik['niemozliwe']) . " lekcji.";
+            $message .= " Nie udało się utworzyć zastępstw dla " . count($wynik['niemozliwe']) . " lekcji (brak dostępnych nauczycieli).";
         }
         $message_type = 'success';
     } else {
@@ -131,7 +134,12 @@ $nieobecnosci = $conn->query("
                 </form>
                 
                 <div class="alert alert-info" style="margin-top: 20px;">
-                    <strong>Informacja:</strong> System automatycznie wygeneruje zastępstwa dla wszystkich lekcji nieobecnego nauczyciela, przydzielając wolnych nauczycieli z odpowiednimi kwalifikacjami.
+                    <strong>Informacja:</strong> System automatycznie wygeneruje zastępstwa dla wszystkich lekcji nieobecnego nauczyciela według następujących zasad:
+                    <ul style="margin-top: 10px; margin-bottom: 0;">
+                        <li><strong>Priorytet 1:</strong> Nauczyciel tego samego przedmiotu</li>
+                        <li><strong>Priorytet 2:</strong> Nauczyciel innego przedmiotu, którego uczy się dana klasa</li>
+                        <li><strong>Pomijane (tylko gdy brak nauczyciela):</strong> Lekcje na pierwszej lub ostatniej godzinie dnia klasy mogą zostać pominięte, jeśli nie ma dostępnego nauczyciela (uczniowie mogą przyjść później/wyjść wcześniej)</li>
+                    </ul>
                 </div>
             </div>
             
