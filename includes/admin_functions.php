@@ -242,9 +242,14 @@ function aktualizuj_uzytkownika($id, $dane) {
     if ($stmt->execute()) {
         $stmt->close();
 
-        // Jeśli zmieniono status aktywności, wyloguj użytkownika
+        // Jeśli zmieniono status aktywności, wyloguj użytkownika - używamy prepared statement
         if (isset($dane['aktywny']) && $dane['aktywny'] == 0) {
-            $conn->query("UPDATE sesje_uzytkownikow SET aktywna = 0 WHERE uzytkownik_id = $id");
+            $stmt_logout = $conn->prepare("UPDATE sesje_uzytkownikow SET aktywna = 0 WHERE uzytkownik_id = ?");
+            if ($stmt_logout) {
+                $stmt_logout->bind_param("i", $id);
+                $stmt_logout->execute();
+                $stmt_logout->close();
+            }
         }
 
         // Loguj aktywność
@@ -254,7 +259,8 @@ function aktualizuj_uzytkownika($id, $dane) {
     } else {
         $error = $stmt->error;
         $stmt->close();
-        return ['success' => false, 'message' => 'Błąd aktualizacji: ' . $error];
+        error_log("Błąd aktualizacji użytkownika ID $id: " . $error);
+        return ['success' => false, 'message' => 'Błąd aktualizacji użytkownika'];
     }
 }
 
@@ -309,9 +315,14 @@ function zmien_status_uzytkownika($id, $aktywny) {
     if ($stmt->execute()) {
         $stmt->close();
 
-        // Jeśli blokujemy, wyloguj użytkownika
+        // Jeśli blokujemy, wyloguj użytkownika - używamy prepared statement
         if ($aktywny == 0) {
-            $conn->query("UPDATE sesje_uzytkownikow SET aktywna = 0 WHERE uzytkownik_id = $id");
+            $stmt_logout = $conn->prepare("UPDATE sesje_uzytkownikow SET aktywna = 0 WHERE uzytkownik_id = ?");
+            if ($stmt_logout) {
+                $stmt_logout->bind_param("i", $id);
+                $stmt_logout->execute();
+                $stmt_logout->close();
+            }
         }
 
         $akcja = $aktywny ? 'odblokowanie' : 'blokada';
@@ -321,7 +332,8 @@ function zmien_status_uzytkownika($id, $aktywny) {
     } else {
         $error = $stmt->error;
         $stmt->close();
-        return ['success' => false, 'message' => 'Błąd zmiany statusu: ' . $error];
+        error_log("Błąd zmiany statusu użytkownika ID $id: " . $error);
+        return ['success' => false, 'message' => 'Błąd zmiany statusu użytkownika'];
     }
 }
 

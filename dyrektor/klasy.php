@@ -7,50 +7,86 @@ $message_type = '';
 
 // Aktualizacja klasy
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['aktualizuj_klase'])) {
-    $klasa_id = $_POST['klasa_id'];
-    $wychowawca_id = $_POST['wychowawca_id'] ?: null;
-    $rozszerzenie_1 = $_POST['rozszerzenie_1'];
-    $rozszerzenie_2 = $_POST['rozszerzenie_2'];
-    $ilosc_godzin = $_POST['ilosc_godzin_dziennie'];
-    
-    $stmt = $conn->prepare("UPDATE klasy SET wychowawca_id = ?, rozszerzenie_1 = ?, rozszerzenie_2 = ?, ilosc_godzin_dziennie = ? WHERE id = ?");
-    $stmt->bind_param("issii", $wychowawca_id, $rozszerzenie_1, $rozszerzenie_2, $ilosc_godzin, $klasa_id);
-    
-    if ($stmt->execute()) {
-        $message = 'Dane klasy zostały zaktualizowane';
-        $message_type = 'success';
+    // CSRF Protection
+    if (!isset($_POST['csrf_token']) || !verify_csrf_token($_POST['csrf_token'])) {
+        $message = 'Nieprawidłowe żądanie. Odśwież stronę i spróbuj ponownie.';
+        $message_type = 'error';
+    } else {
+        $klasa_id = intval($_POST['klasa_id']);
+        $wychowawca_id = !empty($_POST['wychowawca_id']) ? intval($_POST['wychowawca_id']) : null;
+        $rozszerzenie_1 = $_POST['rozszerzenie_1'];
+        $rozszerzenie_2 = $_POST['rozszerzenie_2'];
+        $ilosc_godzin = intval($_POST['ilosc_godzin_dziennie']);
+
+        // Input validation
+        if ($ilosc_godzin < 5 || $ilosc_godzin > 8) {
+            $ilosc_godzin = 7; // Default value
+        }
+
+        $stmt = $conn->prepare("UPDATE klasy SET wychowawca_id = ?, rozszerzenie_1 = ?, rozszerzenie_2 = ?, ilosc_godzin_dziennie = ? WHERE id = ?");
+        $stmt->bind_param("issii", $wychowawca_id, $rozszerzenie_1, $rozszerzenie_2, $ilosc_godzin, $klasa_id);
+
+        if ($stmt->execute()) {
+            $message = 'Dane klasy zostały zaktualizowane';
+            $message_type = 'success';
+        } else {
+            error_log("Błąd aktualizacji klasy: " . $stmt->error);
+            $message = 'Wystąpił błąd podczas aktualizacji klasy';
+            $message_type = 'error';
+        }
+        $stmt->close();
     }
 }
 
 // Przypisywanie przedmiotów
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['przypisz_przedmioty'])) {
-    $klasa_id = $_POST['klasa_id'];
-    
-    // Usuń stare przypisania
-    $conn->query("DELETE FROM klasa_przedmioty WHERE klasa_id = $klasa_id");
-    
-    // Dodaj nowe przypisania
-    $liczba_przypisanych = 0;
-    foreach ($_POST['przedmioty'] as $przedmiot_id => $dane) {
-        // Sprawdź czy nauczyciel jest wybrany I liczba godzin jest większa od 0
-        if (!empty($dane['nauczyciel_id']) && isset($dane['godziny']) && $dane['godziny'] > 0) {
-            $nauczyciel_id = intval($dane['nauczyciel_id']);
-            $godziny = intval($dane['godziny']);
-            
-            $stmt = $conn->prepare("INSERT INTO klasa_przedmioty (klasa_id, przedmiot_id, nauczyciel_id, ilosc_godzin_tydzien) VALUES (?, ?, ?, ?)");
-            $stmt->bind_param("iiii", $klasa_id, $przedmiot_id, $nauczyciel_id, $godziny);
-            if ($stmt->execute()) {
-                $liczba_przypisanych++;
+    // CSRF Protection
+    if (!isset($_POST['csrf_token']) || !verify_csrf_token($_POST['csrf_token'])) {
+        $message = 'Nieprawidłowe żądanie. Odśwież stronę i spróbuj ponownie.';
+        $message_type = 'error';
+    } else {
+        $klasa_id = intval($_POST['klasa_id']);
+
+        // Usuń stare przypisania (using prepared statement)
+        $stmt_delete = $conn->prepare("DELETE FROM klasa_przedmioty WHERE klasa_id = ?");
+        $stmt_delete->bind_param("i", $klasa_id);
+        $stmt_delete->execute();
+        $stmt_delete->close();
+
+        // Dodaj nowe przypisania
+        $liczba_przypisanych = 0;
+        if (isset($_POST['przedmioty']) && is_array($_POST['przedmioty'])) {
+            foreach ($_POST['przedmioty'] as $przedmiot_id => $dane) {
+                // Sprawdź czy nauczyciel jest wybrany I liczba godzin jest większa od 0
+                if (!empty($dane['nauczyciel_id']) && isset($dane['godziny']) && $dane['godziny'] > 0) {
+                    $przedmiot_id = intval($przedmiot_id);
+                    $nauczyciel_id = intval($dane['nauczyciel_id']);
+                    $godziny = intval($dane['godziny']);
+
+                    // Validate hours
+                    if ($godziny < 0 || $godziny > 10) {
+                        continue; // Skip invalid entries
+                    }
+
+                    $stmt = $conn->prepare("INSERT INTO klasa_przedmioty (klasa_id, przedmiot_id, nauczyciel_id, ilosc_godzin_tydzien) VALUES (?, ?, ?, ?)");
+                    $stmt->bind_param("iiii", $klasa_id, $przedmiot_id, $nauczyciel_id, $godziny);
+                    if ($stmt->execute()) {
+                        $liczba_przypisanych++;
+                    } else {
+                        error_log("Błąd przypisywania przedmiotu: " . $stmt->error);
+                    }
+                    $stmt->close();
+                }
             }
         }
-    }
-    
-    if ($liczba_przypisanych > 0) {
-        $message = "Zapisano {$liczba_przypisanych} przedmiotów dla klasy";
-        $message_type = 'success';
-    } else {
-        $message = 'Nie przypisano żadnych przedmiotów. Upewnij się że wybrałeś nauczycieli i ustawiłeś liczbę godzin > 0';
-        $message_type = 'warning';
+
+        if ($liczba_przypisanych > 0) {
+            $message = "Zapisano {$liczba_przypisanych} przedmiotów dla klasy";
+            $message_type = 'success';
+        } else {
+            $message = 'Nie przypisano żadnych przedmiotów. Upewnij się że wybrałeś nauczycieli i ustawiłeś liczbę godzin > 0';
+            $message_type = 'warning';
+        }
     }
 }
 
@@ -76,8 +112,13 @@ $przedmioty = $conn->query("SELECT * FROM przedmioty ORDER BY nazwa");
 
 $selected_klasa = null;
 if (isset($_GET['klasa_id'])) {
-    $klasa_id = $_GET['klasa_id'];
-    $selected_klasa = $conn->query("SELECT * FROM klasy WHERE id = $klasa_id")->fetch_assoc();
+    $klasa_id = intval($_GET['klasa_id']);
+    $stmt = $conn->prepare("SELECT * FROM klasy WHERE id = ?");
+    $stmt->bind_param("i", $klasa_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $selected_klasa = $result->fetch_assoc();
+    $stmt->close();
 }
 ?>
 <!DOCTYPE html>
@@ -129,6 +170,7 @@ if (isset($_GET['klasa_id'])) {
                 <div class="card">
                     <h3 class="card-title">Edycja klasy <?php echo e($selected_klasa['nazwa']); ?></h3>
                     <form method="POST">
+                        <?php echo csrf_field(); ?>
                         <input type="hidden" name="klasa_id" value="<?php echo $selected_klasa['id']; ?>">
                         
                         <div class="form-group">
@@ -183,17 +225,19 @@ if (isset($_GET['klasa_id'])) {
                     // Sprawdź czy są przedmioty bez nauczycieli
                     $przedmioty_bez_nauczycieli = [];
                     $przedmioty->data_seek(0);
+                    $stmt_count = $conn->prepare("SELECT COUNT(*) as cnt FROM nauczyciel_przedmioty WHERE przedmiot_id = ?");
                     while ($p = $przedmioty->fetch_assoc()) {
-                        $count = $conn->query("
-                            SELECT COUNT(*) as cnt
-                            FROM nauczyciel_przedmioty
-                            WHERE przedmiot_id = {$p['id']}
-                        ")->fetch_assoc()['cnt'];
-                        
+                        $przedmiot_id = intval($p['id']);
+                        $stmt_count->bind_param("i", $przedmiot_id);
+                        $stmt_count->execute();
+                        $count_result = $stmt_count->get_result();
+                        $count = $count_result->fetch_assoc()['cnt'];
+
                         if ($count == 0) {
                             $przedmioty_bez_nauczycieli[] = $p['nazwa'];
                         }
                     }
+                    $stmt_count->close();
                     
                     if (count($przedmioty_bez_nauczycieli) > 0):
                     ?>
@@ -209,8 +253,9 @@ if (isset($_GET['klasa_id'])) {
                     <?php endif; ?>
                     
                     <form method="POST">
+                        <?php echo csrf_field(); ?>
                         <input type="hidden" name="klasa_id" value="<?php echo $selected_klasa['id']; ?>">
-                        
+
                         <table>
                             <thead>
                                 <tr>
@@ -222,25 +267,39 @@ if (isset($_GET['klasa_id'])) {
                             <tbody>
                                 <?php
                                 $przedmioty->data_seek(0);
+
+                                // Prepare statements outside the loop for better performance
+                                $stmt_przypisanie = $conn->prepare("SELECT * FROM klasa_przedmioty WHERE klasa_id = ? AND przedmiot_id = ?");
+                                $stmt_liczba_naucz = $conn->prepare("SELECT COUNT(*) as cnt FROM nauczyciel_przedmioty WHERE przedmiot_id = ?");
+                                $stmt_nauczyciele = $conn->prepare("
+                                    SELECT n.id, u.imie, u.nazwisko
+                                    FROM nauczyciele n
+                                    JOIN uzytkownicy u ON n.uzytkownik_id = u.id
+                                    JOIN nauczyciel_przedmioty np ON n.id = np.nauczyciel_id
+                                    WHERE np.przedmiot_id = ?
+                                    ORDER BY u.nazwisko, u.imie
+                                ");
+
                                 while ($p = $przedmioty->fetch_assoc()):
+                                    $przedmiot_id = intval($p['id']);
+                                    $klasa_id_int = intval($selected_klasa['id']);
+
                                     // Pobierz obecne przypisanie
-                                    $przypisanie = $conn->query("
-                                        SELECT * FROM klasa_przedmioty 
-                                        WHERE klasa_id = {$selected_klasa['id']} 
-                                        AND przedmiot_id = {$p['id']}
-                                    ")->fetch_assoc();
+                                    $stmt_przypisanie->bind_param("ii", $klasa_id_int, $przedmiot_id);
+                                    $stmt_przypisanie->execute();
+                                    $przypisanie_result = $stmt_przypisanie->get_result();
+                                    $przypisanie = $przypisanie_result->fetch_assoc();
                                 ?>
                                     <tr>
                                         <td>
                                             <?php echo e($p['nazwa']); ?>
                                             <?php
                                             // Policz ilu nauczycieli może uczyć tego przedmiotu
-                                            $liczba_nauczycieli = $conn->query("
-                                                SELECT COUNT(*) as cnt
-                                                FROM nauczyciel_przedmioty
-                                                WHERE przedmiot_id = {$p['id']}
-                                            ")->fetch_assoc()['cnt'];
-                                            
+                                            $stmt_liczba_naucz->bind_param("i", $przedmiot_id);
+                                            $stmt_liczba_naucz->execute();
+                                            $liczba_result = $stmt_liczba_naucz->get_result();
+                                            $liczba_nauczycieli = $liczba_result->fetch_assoc()['cnt'];
+
                                             if ($liczba_nauczycieli > 0):
                                             ?>
                                                 <span style="background: #28a745; color: white; padding: 2px 8px; border-radius: 10px; font-size: 11px; margin-left: 10px;">
@@ -255,27 +314,22 @@ if (isset($_GET['klasa_id'])) {
                                         <td>
                                             <select name="przedmioty[<?php echo $p['id']; ?>][nauczyciel_id]">
                                                 <option value="">Brak</option>
-                                                <?php 
+                                                <?php
                                                 // Pobierz TYLKO nauczycieli którzy uczą tego przedmiotu
-                                                $nauczyciele_przedmiotu = $conn->query("
-                                                    SELECT n.id, u.imie, u.nazwisko
-                                                    FROM nauczyciele n
-                                                    JOIN uzytkownicy u ON n.uzytkownik_id = u.id
-                                                    JOIN nauczyciel_przedmioty np ON n.id = np.nauczyciel_id
-                                                    WHERE np.przedmiot_id = {$p['id']}
-                                                    ORDER BY u.nazwisko, u.imie
-                                                ");
-                                                
+                                                $stmt_nauczyciele->bind_param("i", $przedmiot_id);
+                                                $stmt_nauczyciele->execute();
+                                                $nauczyciele_przedmiotu = $stmt_nauczyciele->get_result();
+
                                                 if ($nauczyciele_przedmiotu->num_rows > 0):
-                                                    while ($n = $nauczyciele_przedmiotu->fetch_assoc()): 
+                                                    while ($n = $nauczyciele_przedmiotu->fetch_assoc()):
                                                 ?>
-                                                    <option value="<?php echo $n['id']; ?>" 
+                                                    <option value="<?php echo $n['id']; ?>"
                                                         <?php echo ($przypisanie && $n['id'] == $przypisanie['nauczyciel_id']) ? 'selected' : ''; ?>>
                                                         <?php echo e($n['imie'] . ' ' . $n['nazwisko']); ?>
                                                     </option>
-                                                <?php 
+                                                <?php
                                                     endwhile;
-                                                else: 
+                                                else:
                                                 ?>
                                                     <option value="" disabled style="color: red;">Brak nauczycieli tego przedmiotu</option>
                                                 <?php endif; ?>
@@ -287,14 +341,20 @@ if (isset($_GET['klasa_id'])) {
                                             <?php endif; ?>
                                         </td>
                                         <td>
-                                            <input type="number" 
-                                                   name="przedmioty[<?php echo $p['id']; ?>][godziny]" 
-                                                   value="<?php echo $przypisanie ? $przypisanie['ilosc_godzin_tydzien'] : $p['domyslna_ilosc_godzin']; ?>" 
-                                                   min="0" max="10" 
+                                            <input type="number"
+                                                   name="przedmioty[<?php echo $p['id']; ?>][godziny]"
+                                                   value="<?php echo $przypisanie ? $przypisanie['ilosc_godzin_tydzien'] : $p['domyslna_ilosc_godzin']; ?>"
+                                                   min="0" max="10"
                                                    style="width: 80px;">
                                         </td>
                                     </tr>
-                                <?php endwhile; ?>
+                                <?php endwhile;
+
+                                // Close prepared statements
+                                $stmt_przypisanie->close();
+                                $stmt_liczba_naucz->close();
+                                $stmt_nauczyciele->close();
+                                ?>
                             </tbody>
                         </table>
                         

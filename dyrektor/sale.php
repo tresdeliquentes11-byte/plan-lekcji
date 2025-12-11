@@ -7,90 +7,200 @@ $message_type = '';
 
 // Dodawanie sali
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['dodaj_sale'])) {
-    $numer = $_POST['numer'];
-    $nazwa = $_POST['nazwa'] ?? '';
-    $typ = $_POST['typ'] ?? 'standardowa';
-    $pojemnosc = $_POST['pojemnosc'] ?? 30;
-    
-    $stmt = $conn->prepare("INSERT INTO sale (numer, nazwa, typ, pojemnosc) VALUES (?, ?, ?, ?)");
-    $stmt->bind_param("sssi", $numer, $nazwa, $typ, $pojemnosc);
-    
-    if ($stmt->execute()) {
-        $message = 'Sala została dodana pomyślnie';
-        $message_type = 'success';
-    } else {
-        $message = 'Błąd: Sala o tym numerze już istnieje';
+    // CSRF Protection
+    if (!isset($_POST['csrf_token']) || !verify_csrf_token($_POST['csrf_token'])) {
+        $message = 'Nieprawidłowe żądanie. Odśwież stronę i spróbuj ponownie.';
         $message_type = 'error';
+    } else {
+        // Input validation
+        $numer = trim($_POST['numer'] ?? '');
+        $nazwa = trim($_POST['nazwa'] ?? '');
+        $typ = $_POST['typ'] ?? 'standardowa';
+        $pojemnosc = intval($_POST['pojemnosc'] ?? 30);
+
+        // Validate room type
+        $allowed_types = ['standardowa', 'pracownia', 'sportowa', 'specjalna'];
+        if (!in_array($typ, $allowed_types)) {
+            $typ = 'standardowa';
+        }
+
+        // Validate capacity
+        if ($pojemnosc < 1 || $pojemnosc > 100) {
+            $pojemnosc = 30;
+        }
+
+        if (empty($numer)) {
+            $message = 'Numer sali jest wymagany';
+            $message_type = 'error';
+        } else {
+            $stmt = $conn->prepare("INSERT INTO sale (numer, nazwa, typ, pojemnosc) VALUES (?, ?, ?, ?)");
+            $stmt->bind_param("sssi", $numer, $nazwa, $typ, $pojemnosc);
+
+            if ($stmt->execute()) {
+                $message = 'Sala została dodana pomyślnie';
+                $message_type = 'success';
+            } else {
+                error_log("Błąd dodawania sali: " . $stmt->error);
+                $message = 'Błąd: Sala o tym numerze już istnieje';
+                $message_type = 'error';
+            }
+            $stmt->close();
+        }
     }
 }
 
 // Edycja sali
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edytuj_sale'])) {
-    $sala_id = $_POST['sala_id'];
-    $numer = $_POST['numer'];
-    $nazwa = $_POST['nazwa'] ?? '';
-    $typ = $_POST['typ'] ?? 'standardowa';
-    $pojemnosc = $_POST['pojemnosc'] ?? 30;
-    
-    $stmt = $conn->prepare("UPDATE sale SET numer = ?, nazwa = ?, typ = ?, pojemnosc = ? WHERE id = ?");
-    $stmt->bind_param("sssii", $numer, $nazwa, $typ, $pojemnosc, $sala_id);
-    
-    if ($stmt->execute()) {
-        $message = 'Sala została zaktualizowana';
-        $message_type = 'success';
-    } else {
-        $message = 'Błąd podczas aktualizacji sali';
+    // CSRF Protection
+    if (!isset($_POST['csrf_token']) || !verify_csrf_token($_POST['csrf_token'])) {
+        $message = 'Nieprawidłowe żądanie. Odśwież stronę i spróbuj ponownie.';
         $message_type = 'error';
+    } else {
+        $sala_id = intval($_POST['sala_id']);
+        $numer = trim($_POST['numer'] ?? '');
+        $nazwa = trim($_POST['nazwa'] ?? '');
+        $typ = $_POST['typ'] ?? 'standardowa';
+        $pojemnosc = intval($_POST['pojemnosc'] ?? 30);
+
+        // Validate room type
+        $allowed_types = ['standardowa', 'pracownia', 'sportowa', 'specjalna'];
+        if (!in_array($typ, $allowed_types)) {
+            $typ = 'standardowa';
+        }
+
+        // Validate capacity
+        if ($pojemnosc < 1 || $pojemnosc > 100) {
+            $pojemnosc = 30;
+        }
+
+        if (empty($numer)) {
+            $message = 'Numer sali jest wymagany';
+            $message_type = 'error';
+        } else {
+            $stmt = $conn->prepare("UPDATE sale SET numer = ?, nazwa = ?, typ = ?, pojemnosc = ? WHERE id = ?");
+            $stmt->bind_param("sssii", $numer, $nazwa, $typ, $pojemnosc, $sala_id);
+
+            if ($stmt->execute()) {
+                $message = 'Sala została zaktualizowana';
+                $message_type = 'success';
+            } else {
+                error_log("Błąd aktualizacji sali ID $sala_id: " . $stmt->error);
+                $message = 'Błąd podczas aktualizacji sali';
+                $message_type = 'error';
+            }
+            $stmt->close();
+        }
     }
 }
 
 // Przypisywanie przedmiotów do sali
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['przypisz_przedmioty'])) {
-    $sala_id = $_POST['sala_id'];
-    $przedmioty = $_POST['przedmioty'] ?? [];
-    
-    // Usuń stare przypisania
-    $conn->query("DELETE FROM sala_przedmioty WHERE sala_id = $sala_id");
-    
-    // Dodaj nowe przypisania
-    foreach ($przedmioty as $przedmiot_id) {
-        $stmt = $conn->prepare("INSERT INTO sala_przedmioty (sala_id, przedmiot_id) VALUES (?, ?)");
-        $stmt->bind_param("ii", $sala_id, $przedmiot_id);
-        $stmt->execute();
+    // CSRF Protection
+    if (!isset($_POST['csrf_token']) || !verify_csrf_token($_POST['csrf_token'])) {
+        $message = 'Nieprawidłowe żądanie. Odśwież stronę i spróbuj ponownie.';
+        $message_type = 'error';
+    } else {
+        $sala_id = intval($_POST['sala_id']);
+        $przedmioty = $_POST['przedmioty'] ?? [];
+
+        // Validate that przedmioty is an array
+        if (!is_array($przedmioty)) {
+            $przedmioty = [];
+        }
+
+        // Usuń stare przypisania - używamy prepared statement
+        $stmt_delete = $conn->prepare("DELETE FROM sala_przedmioty WHERE sala_id = ?");
+        if ($stmt_delete) {
+            $stmt_delete->bind_param("i", $sala_id);
+            $stmt_delete->execute();
+            $stmt_delete->close();
+        }
+
+        // Dodaj nowe przypisania
+        if (!empty($przedmioty)) {
+            $stmt = $conn->prepare("INSERT INTO sala_przedmioty (sala_id, przedmiot_id) VALUES (?, ?)");
+            if ($stmt) {
+                foreach ($przedmioty as $przedmiot_id) {
+                    $przedmiot_id = intval($przedmiot_id);
+                    $stmt->bind_param("ii", $sala_id, $przedmiot_id);
+                    $stmt->execute();
+                }
+                $stmt->close();
+            }
+        }
+
+        $message = 'Przedmioty zostały przypisane do sali';
+        $message_type = 'success';
     }
-    
-    $message = 'Przedmioty zostały przypisane do sali';
-    $message_type = 'success';
 }
 
 // Przypisywanie nauczycieli do sali
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['przypisz_nauczycieli'])) {
-    $sala_id = $_POST['sala_id'];
-    $nauczyciele = $_POST['nauczyciele'] ?? [];
-    
-    // Usuń stare przypisania
-    $conn->query("DELETE FROM sala_nauczyciele WHERE sala_id = $sala_id");
-    
-    // Dodaj nowe przypisania
-    foreach ($nauczyciele as $nauczyciel_id) {
-        $stmt = $conn->prepare("INSERT INTO sala_nauczyciele (sala_id, nauczyciel_id) VALUES (?, ?)");
-        $stmt->bind_param("ii", $sala_id, $nauczyciel_id);
-        $stmt->execute();
+    // CSRF Protection
+    if (!isset($_POST['csrf_token']) || !verify_csrf_token($_POST['csrf_token'])) {
+        $message = 'Nieprawidłowe żądanie. Odśwież stronę i spróbuj ponownie.';
+        $message_type = 'error';
+    } else {
+        $sala_id = intval($_POST['sala_id']);
+        $nauczyciele = $_POST['nauczyciele'] ?? [];
+
+        // Validate that nauczyciele is an array
+        if (!is_array($nauczyciele)) {
+            $nauczyciele = [];
+        }
+
+        // Usuń stare przypisania - używamy prepared statement
+        $stmt_delete = $conn->prepare("DELETE FROM sala_nauczyciele WHERE sala_id = ?");
+        if ($stmt_delete) {
+            $stmt_delete->bind_param("i", $sala_id);
+            $stmt_delete->execute();
+            $stmt_delete->close();
+        }
+
+        // Dodaj nowe przypisania
+        if (!empty($nauczyciele)) {
+            $stmt = $conn->prepare("INSERT INTO sala_nauczyciele (sala_id, nauczyciel_id) VALUES (?, ?)");
+            if ($stmt) {
+                foreach ($nauczyciele as $nauczyciel_id) {
+                    $nauczyciel_id = intval($nauczyciel_id);
+                    $stmt->bind_param("ii", $sala_id, $nauczyciel_id);
+                    $stmt->execute();
+                }
+                $stmt->close();
+            }
+        }
+
+        $message = 'Nauczyciele zostali przypisani do sali';
+        $message_type = 'success';
     }
-    
-    $message = 'Nauczyciele zostali przypisani do sali';
-    $message_type = 'success';
 }
 
-// Usuwanie sali
-if (isset($_GET['usun'])) {
-    $id = $_GET['usun'];
-    if ($conn->query("DELETE FROM sale WHERE id = $id")) {
-        $message = 'Sala została usunięta';
-        $message_type = 'success';
-    } else {
-        $message = 'Nie można usunąć sali (może być używana w planie)';
+// Usuwanie sali - ZMIENIONE Z GET NA POST
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['usun_sale'])) {
+    // CSRF Protection
+    if (!isset($_POST['csrf_token']) || !verify_csrf_token($_POST['csrf_token'])) {
+        $message = 'Nieprawidłowe żądanie. Odśwież stronę i spróbuj ponownie.';
         $message_type = 'error';
+    } else {
+        $id = intval($_POST['sala_id']);
+
+        $stmt = $conn->prepare("DELETE FROM sale WHERE id = ?");
+        if ($stmt) {
+            $stmt->bind_param("i", $id);
+            if ($stmt->execute()) {
+                $message = 'Sala została usunięta';
+                $message_type = 'success';
+            } else {
+                error_log("Błąd usuwania sali ID $id: " . $stmt->error);
+                $message = 'Nie można usunąć sali (może być używana w planie)';
+                $message_type = 'error';
+            }
+            $stmt->close();
+        } else {
+            error_log("Błąd przygotowania zapytania usuwania sali: " . $conn->error);
+            $message = 'Błąd podczas usuwania sali';
+            $message_type = 'error';
+        }
     }
 }
 
@@ -123,19 +233,42 @@ $selected_przedmioty = [];
 $selected_nauczyciele = [];
 
 if (isset($_GET['edytuj'])) {
-    $sala_id = $_GET['edytuj'];
-    $selected_sala = $conn->query("SELECT * FROM sale WHERE id = $sala_id")->fetch_assoc();
-    
-    // Pobierz przypisane przedmioty
-    $result = $conn->query("SELECT przedmiot_id FROM sala_przedmioty WHERE sala_id = $sala_id");
-    while ($row = $result->fetch_assoc()) {
-        $selected_przedmioty[] = $row['przedmiot_id'];
+    $sala_id = intval($_GET['edytuj']);
+
+    // Używamy prepared statement
+    $stmt = $conn->prepare("SELECT * FROM sale WHERE id = ?");
+    if ($stmt) {
+        $stmt->bind_param("i", $sala_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $selected_sala = $result->fetch_assoc();
+        $stmt->close();
     }
-    
-    // Pobierz przypisanych nauczycieli
-    $result = $conn->query("SELECT nauczyciel_id FROM sala_nauczyciele WHERE sala_id = $sala_id");
-    while ($row = $result->fetch_assoc()) {
-        $selected_nauczyciele[] = $row['nauczyciel_id'];
+
+    if ($selected_sala) {
+        // Pobierz przypisane przedmioty - używamy prepared statement
+        $stmt = $conn->prepare("SELECT przedmiot_id FROM sala_przedmioty WHERE sala_id = ?");
+        if ($stmt) {
+            $stmt->bind_param("i", $sala_id);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            while ($row = $result->fetch_assoc()) {
+                $selected_przedmioty[] = $row['przedmiot_id'];
+            }
+            $stmt->close();
+        }
+
+        // Pobierz przypisanych nauczycieli - używamy prepared statement
+        $stmt = $conn->prepare("SELECT nauczyciel_id FROM sala_nauczyciele WHERE sala_id = ?");
+        if ($stmt) {
+            $stmt->bind_param("i", $sala_id);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            while ($row = $result->fetch_assoc()) {
+                $selected_nauczyciele[] = $row['nauczyciel_id'];
+            }
+            $stmt->close();
+        }
     }
 }
 ?>
@@ -251,6 +384,7 @@ if (isset($_GET['edytuj'])) {
                 <div class="card">
                     <h3 class="card-title">Dodaj nową salę</h3>
                     <form method="POST">
+                        <?php echo csrf_field(); ?>
                         <div style="display: grid; grid-template-columns: 1fr 2fr 1fr 1fr; gap: 15px;">
                             <div class="form-group">
                                 <label>Numer sali *</label>
@@ -303,12 +437,13 @@ if (isset($_GET['edytuj'])) {
                                         <a href="?edytuj=<?php echo $s['id']; ?>" class="btn btn-secondary" style="padding: 5px 10px; font-size: 12px;">
                                             Edytuj
                                         </a>
-                                        <a href="?usun=<?php echo $s['id']; ?>" 
-                                           class="btn btn-danger" 
-                                           style="padding: 5px 10px; font-size: 12px;"
-                                           onclick="return confirm('Czy na pewno usunąć tę salę?')">
-                                            Usuń
-                                        </a>
+                                        <form method="POST" style="display: inline;" onsubmit="return confirm('Czy na pewno usunąć tę salę?')">
+                                            <?php echo csrf_field(); ?>
+                                            <input type="hidden" name="usun_sale" value="<?php echo $s['id']; ?>">
+                                            <button type="submit" class="btn btn-danger" style="padding: 5px 10px; font-size: 12px;">
+                                                Usuń
+                                            </button>
+                                        </form>
                                     </div>
                                 </div>
                             <?php endwhile; ?>
@@ -323,8 +458,9 @@ if (isset($_GET['edytuj'])) {
                 <div class="card">
                     <h3 class="card-title">Edycja sali: <?php echo e($selected_sala['numer']); ?></h3>
                     <a href="sale.php" class="btn btn-secondary" style="margin-bottom: 20px;">← Powrót do listy sal</a>
-                    
+
                     <form method="POST">
+                        <?php echo csrf_field(); ?>
                         <input type="hidden" name="sala_id" value="<?php echo $selected_sala['id']; ?>">
                         
                         <div style="display: grid; grid-template-columns: 1fr 2fr 1fr 1fr; gap: 15px;">
@@ -359,8 +495,9 @@ if (isset($_GET['edytuj'])) {
                 <div class="card">
                     <h3 class="card-title">Przypisz przedmioty do sali</h3>
                     <p>Wybierz przedmioty, które są najczęściej prowadzone w tej sali. System będzie preferował tę salę przy generowaniu planu dla tych przedmiotów.</p>
-                    
+
                     <form method="POST">
+                        <?php echo csrf_field(); ?>
                         <input type="hidden" name="sala_id" value="<?php echo $selected_sala['id']; ?>">
                         
                         <div class="checkbox-list">
@@ -388,8 +525,9 @@ if (isset($_GET['edytuj'])) {
                 <div class="card">
                     <h3 class="card-title">Przypisz nauczycieli do sali</h3>
                     <p>Wybierz nauczycieli, którzy najczęściej prowadzą zajęcia w tej sali. System będzie preferował tę salę dla wybranych nauczycieli.</p>
-                    
+
                     <form method="POST">
+                        <?php echo csrf_field(); ?>
                         <input type="hidden" name="sala_id" value="<?php echo $selected_sala['id']; ?>">
                         
                         <div class="checkbox-list">

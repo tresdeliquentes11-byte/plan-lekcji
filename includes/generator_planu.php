@@ -31,20 +31,44 @@ class GeneratorPlanu {
         // Pobierz wszystkie klasy
         $klasy_result = $this->conn->query("SELECT * FROM klasy ORDER BY nazwa");
 
+        if (!$klasy_result) {
+            $this->validation_errors[] = "Błąd bazy danych: nie udało się pobrać listy klas - " . $this->conn->error;
+            return [
+                'success' => false,
+                'errors' => $this->validation_errors
+            ];
+        }
+
         while ($klasa = $klasy_result->fetch_assoc()) {
             $klasa_id = $klasa['id'];
             $klasa_nazwa = $klasa['nazwa'];
 
-            // Sprawdź czy klasa ma przypisane przedmioty
-            $przedmioty_result = $this->conn->query("
+            // Sprawdź czy klasa ma przypisane przedmioty - używamy prepared statement
+            $stmt = $this->conn->prepare("
                 SELECT kp.*, p.nazwa as przedmiot_nazwa
                 FROM klasa_przedmioty kp
                 JOIN przedmioty p ON kp.przedmiot_id = p.id
-                WHERE kp.klasa_id = $klasa_id
+                WHERE kp.klasa_id = ?
             ");
+
+            if (!$stmt) {
+                $this->validation_errors[] = "Błąd bazy danych dla klasy $klasa_nazwa: " . $this->conn->error;
+                continue;
+            }
+
+            $stmt->bind_param("i", $klasa_id);
+
+            if (!$stmt->execute()) {
+                $this->validation_errors[] = "Błąd wykonania zapytania dla klasy $klasa_nazwa: " . $stmt->error;
+                $stmt->close();
+                continue;
+            }
+
+            $przedmioty_result = $stmt->get_result();
 
             if ($przedmioty_result->num_rows === 0) {
                 $this->validation_errors[] = "Klasa $klasa_nazwa nie ma przypisanych żadnych przedmiotów";
+                $stmt->close();
                 continue;
             }
 
@@ -55,16 +79,33 @@ class GeneratorPlanu {
                 $nauczyciel_id = $przedmiot['nauczyciel_id'];
 
                 // Sprawdź czy przedmiot ma ilosc_godzin_tydzien > 0
-                if ($przedmiot['ilosc_godzin_tydzien'] <= 0) {
+                if (!isset($przedmiot['ilosc_godzin_tydzien']) || $przedmiot['ilosc_godzin_tydzien'] <= 0) {
                     $this->validation_errors[] = "Klasa $klasa_nazwa: przedmiot '$przedmiot_nazwa' ma nieprawidłową ilość godzin tygodniowo";
                     continue;
                 }
 
-                // Sprawdź czy nauczyciel istnieje
-                $nauczyciel_check = $this->conn->query("
-                    SELECT COUNT(*) as cnt FROM nauczyciele WHERE id = $nauczyciel_id
+                // Sprawdź czy nauczyciel istnieje - używamy prepared statement
+                $stmt_nauczyciel = $this->conn->prepare("
+                    SELECT COUNT(*) as cnt FROM nauczyciele WHERE id = ?
                 ");
-                $nauczyciel_exists = $nauczyciel_check->fetch_assoc()['cnt'] > 0;
+
+                if (!$stmt_nauczyciel) {
+                    $this->validation_errors[] = "Błąd bazy danych sprawdzania nauczyciela dla przedmiotu '$przedmiot_nazwa': " . $this->conn->error;
+                    continue;
+                }
+
+                $stmt_nauczyciel->bind_param("i", $nauczyciel_id);
+
+                if (!$stmt_nauczyciel->execute()) {
+                    $this->validation_errors[] = "Błąd wykonania zapytania dla nauczyciela przedmiotu '$przedmiot_nazwa': " . $stmt_nauczyciel->error;
+                    $stmt_nauczyciel->close();
+                    continue;
+                }
+
+                $result_nauczyciel = $stmt_nauczyciel->get_result();
+                $row_nauczyciel = $result_nauczyciel->fetch_assoc();
+                $nauczyciel_exists = $row_nauczyciel && $row_nauczyciel['cnt'] > 0;
+                $stmt_nauczyciel->close();
 
                 if (!$nauczyciel_exists) {
                     $this->validation_errors[] = "Klasa $klasa_nazwa: przedmiot '$przedmiot_nazwa' nie ma przypisanego nauczyciela";
@@ -72,29 +113,70 @@ class GeneratorPlanu {
                 }
 
                 // Sprawdź czy istnieje przynajmniej jedna sala dla tego przedmiotu
-                $sala_check = $this->conn->query("
+                $stmt_sala = $this->conn->prepare("
                     SELECT COUNT(*) as cnt
                     FROM sala_przedmioty sp
-                    WHERE sp.przedmiot_id = $przedmiot_id
+                    WHERE sp.przedmiot_id = ?
                 ");
-                $sala_exists = $sala_check->fetch_assoc()['cnt'] > 0;
+
+                if (!$stmt_sala) {
+                    $this->validation_errors[] = "Błąd bazy danych sprawdzania sali dla przedmiotu '$przedmiot_nazwa': " . $this->conn->error;
+                    continue;
+                }
+
+                $stmt_sala->bind_param("i", $przedmiot_id);
+
+                if (!$stmt_sala->execute()) {
+                    $this->validation_errors[] = "Błąd wykonania zapytania dla sali przedmiotu '$przedmiot_nazwa': " . $stmt_sala->error;
+                    $stmt_sala->close();
+                    continue;
+                }
+
+                $result_sala = $stmt_sala->get_result();
+                $row_sala = $result_sala->fetch_assoc();
+                $sala_exists = $row_sala && $row_sala['cnt'] > 0;
+                $stmt_sala->close();
 
                 // Alternatywnie sprawdź sale dla nauczyciela
-                $sala_nauczyciel_check = $this->conn->query("
+                $stmt_sala_n = $this->conn->prepare("
                     SELECT COUNT(*) as cnt
                     FROM sala_nauczyciele sn
-                    WHERE sn.nauczyciel_id = $nauczyciel_id
+                    WHERE sn.nauczyciel_id = ?
                 ");
-                $sala_nauczyciel_exists = $sala_nauczyciel_check->fetch_assoc()['cnt'] > 0;
+
+                if (!$stmt_sala_n) {
+                    $this->validation_errors[] = "Błąd bazy danych sprawdzania sali nauczyciela dla przedmiotu '$przedmiot_nazwa': " . $this->conn->error;
+                    continue;
+                }
+
+                $stmt_sala_n->bind_param("i", $nauczyciel_id);
+
+                if (!$stmt_sala_n->execute()) {
+                    $this->validation_errors[] = "Błąd wykonania zapytania dla sali nauczyciela przedmiotu '$przedmiot_nazwa': " . $stmt_sala_n->error;
+                    $stmt_sala_n->close();
+                    continue;
+                }
+
+                $result_sala_n = $stmt_sala_n->get_result();
+                $row_sala_n = $result_sala_n->fetch_assoc();
+                $sala_nauczyciel_exists = $row_sala_n && $row_sala_n['cnt'] > 0;
+                $stmt_sala_n->close();
 
                 // Sprawdź czy istnieje jakakolwiek sala
                 $any_sala = $this->conn->query("SELECT COUNT(*) as cnt FROM sale");
-                $sala_any_exists = $any_sala->fetch_assoc()['cnt'] > 0;
+                if (!$any_sala) {
+                    $this->validation_errors[] = "Błąd bazy danych sprawdzania dostępnych sal: " . $this->conn->error;
+                    continue;
+                }
+                $row_any_sala = $any_sala->fetch_assoc();
+                $sala_any_exists = $row_any_sala && $row_any_sala['cnt'] > 0;
 
                 if (!$sala_exists && !$sala_nauczyciel_exists && !$sala_any_exists) {
                     $this->validation_errors[] = "Klasa $klasa_nazwa: przedmiot '$przedmiot_nazwa' - brak dostępnych sal";
                 }
             }
+
+            $stmt->close();
         }
 
         return [
@@ -116,6 +198,10 @@ class GeneratorPlanu {
         // Załaduj klasy i ich przedmioty
         $klasy_result = $this->conn->query("SELECT * FROM klasy ORDER BY nazwa");
 
+        if (!$klasy_result) {
+            throw new Exception("Błąd ładowania danych klas: " . $this->conn->error);
+        }
+
         while ($klasa = $klasy_result->fetch_assoc()) {
             $klasa_id = $klasa['id'];
 
@@ -131,28 +217,55 @@ class GeneratorPlanu {
                 $this->daily_count[$klasa_id][$dzien] = 0;
             }
 
-            // Załaduj przedmioty dla klasy
-            $przedmioty_result = $this->conn->query("
+            // Załaduj przedmioty dla klasy - używamy prepared statement
+            $stmt = $this->conn->prepare("
                 SELECT kp.*, p.czy_rozszerzony, p.nazwa, p.skrot
                 FROM klasa_przedmioty kp
                 JOIN przedmioty p ON kp.przedmiot_id = p.id
-                WHERE kp.klasa_id = $klasa_id
+                WHERE kp.klasa_id = ?
             ");
+
+            if (!$stmt) {
+                throw new Exception("Błąd przygotowania zapytania dla przedmiotów klasy: " . $this->conn->error);
+            }
+
+            $stmt->bind_param("i", $klasa_id);
+
+            if (!$stmt->execute()) {
+                $stmt->close();
+                throw new Exception("Błąd wykonania zapytania dla przedmiotów klasy ID $klasa_id: " . $stmt->error);
+            }
+
+            $przedmioty_result = $stmt->get_result();
 
             while ($przedmiot = $przedmioty_result->fetch_assoc()) {
                 $przedmiot_id = $przedmiot['przedmiot_id'];
+
+                // Walidacja danych przed użyciem
+                if (!isset($przedmiot['ilosc_godzin_tydzien'])) {
+                    error_log("Brak pola ilosc_godzin_tydzien dla przedmiotu ID $przedmiot_id w klasie ID $klasa_id");
+                    continue;
+                }
+
                 $this->remaining_hours[$klasa_id][$przedmiot_id] = [
                     'hours' => intval($przedmiot['ilosc_godzin_tydzien']),
-                    'nauczyciel_id' => $przedmiot['nauczyciel_id'],
-                    'nazwa' => $przedmiot['nazwa'],
-                    'skrot' => $przedmiot['skrot'],
-                    'czy_rozszerzony' => $przedmiot['czy_rozszerzony']
+                    'nauczyciel_id' => $przedmiot['nauczyciel_id'] ?? null,
+                    'nazwa' => $przedmiot['nazwa'] ?? '',
+                    'skrot' => $przedmiot['skrot'] ?? '',
+                    'czy_rozszerzony' => $przedmiot['czy_rozszerzony'] ?? 0
                 ];
             }
+
+            $stmt->close();
         }
 
         // Załaduj dostępność sal (na początku wszystkie wolne)
         $sale_result = $this->conn->query("SELECT id FROM sale");
+
+        if (!$sale_result) {
+            throw new Exception("Błąd ładowania danych sal: " . $this->conn->error);
+        }
+
         while ($sala = $sale_result->fetch_assoc()) {
             $sala_id = $sala['id'];
             $this->room_availability[$sala_id] = [];
@@ -167,6 +280,11 @@ class GeneratorPlanu {
 
         // Załaduj dostępność nauczycieli (bazując na godzinach pracy i nieobecnościach)
         $nauczyciele_result = $this->conn->query("SELECT id FROM nauczyciele");
+
+        if (!$nauczyciele_result) {
+            throw new Exception("Błąd ładowania danych nauczycieli: " . $this->conn->error);
+        }
+
         while ($nauczyciel = $nauczyciele_result->fetch_assoc()) {
             $nauczyciel_id = $nauczyciel['id'];
             $this->teacher_availability[$nauczyciel_id] = [];
@@ -178,14 +296,19 @@ class GeneratorPlanu {
 
                 for ($i = 1; $i <= 10; $i++) {
                     // Sprawdź dostępność na podstawie godzin pracy
-                    $dostepny = sprawdz_dostepnosc_nauczyciela_w_czasie(
-                        $nauczyciel_id,
-                        $dzien,
-                        null,
-                        $i,
-                        $this->conn
-                    );
-                    $this->teacher_availability[$nauczyciel_id][$dzien][$i] = $dostepny;
+                    try {
+                        $dostepny = sprawdz_dostepnosc_nauczyciela_w_czasie(
+                            $nauczyciel_id,
+                            $dzien,
+                            null,
+                            $i,
+                            $this->conn
+                        );
+                        $this->teacher_availability[$nauczyciel_id][$dzien][$i] = $dostepny;
+                    } catch (Exception $e) {
+                        error_log("Błąd sprawdzania dostępności nauczyciela ID $nauczyciel_id: " . $e->getMessage());
+                        $this->teacher_availability[$nauczyciel_id][$dzien][$i] = false;
+                    }
                 }
             }
         }
@@ -351,16 +474,33 @@ class GeneratorPlanu {
 
 
     private function getFamilyId($przedmiot_id, $klasa_id) {
-        // Sprawdź czy to przedmiot rozszerzony
-        $result = $this->conn->query("
+        // Sprawdź czy to przedmiot rozszerzony - używamy prepared statement
+        $stmt = $this->conn->prepare("
             SELECT p.nazwa, p.czy_rozszerzony
             FROM przedmioty p
-            WHERE p.id = $przedmiot_id
+            WHERE p.id = ?
         ");
 
+        if (!$stmt) {
+            error_log("Błąd przygotowania zapytania getFamilyId: " . $this->conn->error);
+            return 'subject_' . $przedmiot_id;
+        }
+
+        $stmt->bind_param("i", $przedmiot_id);
+
+        if (!$stmt->execute()) {
+            error_log("Błąd wykonania zapytania getFamilyId dla przedmiotu ID $przedmiot_id: " . $stmt->error);
+            $stmt->close();
+            return 'subject_' . $przedmiot_id;
+        }
+
+        $result = $stmt->get_result();
+
         if ($result && $row = $result->fetch_assoc()) {
-            $nazwa = $row['nazwa'];
-            $czy_rozszerzony = $row['czy_rozszerzony'];
+            $nazwa = $row['nazwa'] ?? '';
+            $czy_rozszerzony = $row['czy_rozszerzony'] ?? 0;
+
+            $stmt->close();
 
             // Jeśli rozszerzony, usuń "rozszerzony/rozszerzona/rozszerzone" z nazwy
             if ($czy_rozszerzony) {
@@ -368,6 +508,8 @@ class GeneratorPlanu {
                 $base_name = trim($base_name);
                 return 'family_' . md5($base_name);
             }
+        } else {
+            $stmt->close();
         }
 
         // Domyślnie zwróć ID przedmiotu
@@ -393,53 +535,89 @@ class GeneratorPlanu {
 
     private function znajdzSale($dzien, $lekcja_nr, $przedmiot_id, $nauczyciel_id) {
         // Priorytet 1: Sala przypisana do przedmiotu I nauczyciela
-        $result = $this->conn->query("
+        $stmt = $this->conn->prepare("
             SELECT s.id
             FROM sale s
             INNER JOIN sala_przedmioty sp ON s.id = sp.sala_id
             INNER JOIN sala_nauczyciele sn ON s.id = sn.sala_id
-            WHERE sp.przedmiot_id = $przedmiot_id
-            AND sn.nauczyciel_id = $nauczyciel_id
+            WHERE sp.przedmiot_id = ?
+            AND sn.nauczyciel_id = ?
             LIMIT 1
         ");
 
-        if ($result && $result->num_rows > 0) {
-            $sala = $result->fetch_assoc();
-            if ($this->room_availability[$sala['id']][$dzien][$lekcja_nr]) {
-                return $sala['id'];
+        if ($stmt) {
+            $stmt->bind_param("ii", $przedmiot_id, $nauczyciel_id);
+
+            if ($stmt->execute()) {
+                $result = $stmt->get_result();
+
+                if ($result && $result->num_rows > 0) {
+                    $sala = $result->fetch_assoc();
+                    if (isset($this->room_availability[$sala['id']][$dzien][$lekcja_nr]) &&
+                        $this->room_availability[$sala['id']][$dzien][$lekcja_nr]) {
+                        $stmt->close();
+                        return $sala['id'];
+                    }
+                }
             }
+
+            $stmt->close();
         }
 
         // Priorytet 2: Sala przypisana do przedmiotu
-        $result = $this->conn->query("
+        $stmt = $this->conn->prepare("
             SELECT s.id
             FROM sale s
             INNER JOIN sala_przedmioty sp ON s.id = sp.sala_id
-            WHERE sp.przedmiot_id = $przedmiot_id
+            WHERE sp.przedmiot_id = ?
         ");
 
-        if ($result) {
-            while ($sala = $result->fetch_assoc()) {
-                if ($this->room_availability[$sala['id']][$dzien][$lekcja_nr]) {
-                    return $sala['id'];
+        if ($stmt) {
+            $stmt->bind_param("i", $przedmiot_id);
+
+            if ($stmt->execute()) {
+                $result = $stmt->get_result();
+
+                if ($result) {
+                    while ($sala = $result->fetch_assoc()) {
+                        if (isset($this->room_availability[$sala['id']][$dzien][$lekcja_nr]) &&
+                            $this->room_availability[$sala['id']][$dzien][$lekcja_nr]) {
+                            $stmt->close();
+                            return $sala['id'];
+                        }
+                    }
                 }
             }
+
+            $stmt->close();
         }
 
         // Priorytet 3: Sala przypisana do nauczyciela
-        $result = $this->conn->query("
+        $stmt = $this->conn->prepare("
             SELECT s.id
             FROM sale s
             INNER JOIN sala_nauczyciele sn ON s.id = sn.sala_id
-            WHERE sn.nauczyciel_id = $nauczyciel_id
+            WHERE sn.nauczyciel_id = ?
         ");
 
-        if ($result) {
-            while ($sala = $result->fetch_assoc()) {
-                if ($this->room_availability[$sala['id']][$dzien][$lekcja_nr]) {
-                    return $sala['id'];
+        if ($stmt) {
+            $stmt->bind_param("i", $nauczyciel_id);
+
+            if ($stmt->execute()) {
+                $result = $stmt->get_result();
+
+                if ($result) {
+                    while ($sala = $result->fetch_assoc()) {
+                        if (isset($this->room_availability[$sala['id']][$dzien][$lekcja_nr]) &&
+                            $this->room_availability[$sala['id']][$dzien][$lekcja_nr]) {
+                            $stmt->close();
+                            return $sala['id'];
+                        }
+                    }
                 }
             }
+
+            $stmt->close();
         }
 
         // Priorytet 4: Dowolna wolna sala
@@ -629,9 +807,32 @@ class GeneratorPlanu {
             return false;
         }
 
-        $klasa_result = $this->conn->query("SELECT ilosc_godzin_dziennie FROM klasy WHERE id = $klasa_id");
-        $klasa_data = $klasa_result->fetch_assoc();
-        $max_godzin = $klasa_data['ilosc_godzin_dziennie'];
+        // Używamy prepared statement
+        $stmt = $this->conn->prepare("SELECT ilosc_godzin_dziennie FROM klasy WHERE id = ?");
+
+        if (!$stmt) {
+            error_log("Błąd przygotowania zapytania probaPrzesuniecia: " . $this->conn->error);
+            return false;
+        }
+
+        $stmt->bind_param("i", $klasa_id);
+
+        if (!$stmt->execute()) {
+            error_log("Błąd wykonania zapytania probaPrzesuniecia dla klasy ID $klasa_id: " . $stmt->error);
+            $stmt->close();
+            return false;
+        }
+
+        $result = $stmt->get_result();
+        $klasa_data = $result->fetch_assoc();
+        $stmt->close();
+
+        if (!$klasa_data || !isset($klasa_data['ilosc_godzin_dziennie'])) {
+            error_log("Brak danych o ilości godzin dziennie dla klasy ID $klasa_id");
+            return false;
+        }
+
+        $max_godzin = intval($klasa_data['ilosc_godzin_dziennie']);
 
         // Spróbuj przesunąć każdą lekcję
         foreach ($this->class_schedule[$klasa_id][$dzien] as $lekcja_nr_source => $lekcja_data) {
@@ -691,7 +892,11 @@ class GeneratorPlanu {
                             $lekcja_data['sala_id']
                         );
 
-                        $stmt->execute();
+                        if (!$stmt->execute()) {
+                            throw new Exception("Błąd zapisywania lekcji do bazy dla klasy ID $klasa_id, dzień $dzien, lekcja $lekcja_nr: " . $stmt->error);
+                        }
+
+                        $stmt->close();
                         $ilosc_lekcji++;
                     }
                 }
@@ -748,10 +953,26 @@ class GeneratorPlanu {
 
     private function obliczGodziny($numer_lekcji) {
         $start_timestamp = strtotime($this->godzina_rozpoczecia);
+
+        if ($start_timestamp === false) {
+            error_log("Błąd parsowania godziny rozpoczęcia: " . $this->godzina_rozpoczecia);
+            // Zwróć wartości domyślne
+            return ['start' => '08:00:00', 'koniec' => '08:45:00'];
+        }
+
         $minutes_offset = ($numer_lekcji - 1) * ($this->czas_lekcji + $this->czas_przerwy);
 
-        $start = date('H:i:s', strtotime("+$minutes_offset minutes", $start_timestamp));
-        $end = date('H:i:s', strtotime("+" . ($minutes_offset + $this->czas_lekcji) . " minutes", $start_timestamp));
+        $start_calc = strtotime("+$minutes_offset minutes", $start_timestamp);
+        $end_calc = strtotime("+" . ($minutes_offset + $this->czas_lekcji) . " minutes", $start_timestamp);
+
+        if ($start_calc === false || $end_calc === false) {
+            error_log("Błąd obliczania czasu dla lekcji nr $numer_lekcji");
+            // Zwróć wartości domyślne
+            return ['start' => '08:00:00', 'koniec' => '08:45:00'];
+        }
+
+        $start = date('H:i:s', $start_calc);
+        $end = date('H:i:s', $end_calc);
 
         return ['start' => $start, 'koniec' => $end];
     }
@@ -766,6 +987,10 @@ class GeneratorPlanu {
         // Pobierz szablon planu
         $plan_szablon = $this->conn->query("SELECT * FROM plan_lekcji WHERE szablon_tygodniowy = 1 ORDER BY klasa_id, dzien_tygodnia, numer_lekcji");
 
+        if (!$plan_szablon) {
+            throw new Exception("Błąd pobierania szablonu planu: " . $this->conn->error);
+        }
+
         $szablony = [];
         while ($lekcja = $plan_szablon->fetch_assoc()) {
             $szablony[] = $lekcja;
@@ -773,6 +998,11 @@ class GeneratorPlanu {
 
         // Pobierz dni wolne
         $dni_wolne_result = $this->conn->query("SELECT data FROM dni_wolne");
+
+        if (!$dni_wolne_result) {
+            throw new Exception("Błąd pobierania dni wolnych: " . $this->conn->error);
+        }
+
         $dni_wolne = [];
         while ($dzien = $dni_wolne_result->fetch_assoc()) {
             $dni_wolne[] = $dzien['data'];
@@ -781,6 +1011,10 @@ class GeneratorPlanu {
         // Generuj plan dla każdego dnia roboczego
         $current_date = strtotime($data_poczatek);
         $end_date = strtotime($data_koniec);
+
+        if ($current_date === false || $end_date === false) {
+            throw new Exception("Błąd parsowania dat dla planu rocznego");
+        }
 
         while ($current_date <= $end_date) {
             $date_string = date('Y-m-d', $current_date);
@@ -798,6 +1032,10 @@ class GeneratorPlanu {
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ");
 
+                        if (!$stmt) {
+                            throw new Exception("Błąd przygotowania zapytania dla planu dziennego: " . $this->conn->error);
+                        }
+
                         $stmt->bind_param("isiisssii",
                             $szablon['id'],
                             $date_string,
@@ -810,12 +1048,22 @@ class GeneratorPlanu {
                             $szablon['sala_id']
                         );
 
-                        $stmt->execute();
+                        if (!$stmt->execute()) {
+                            throw new Exception("Błąd zapisywania planu dziennego dla daty $date_string: " . $stmt->error);
+                        }
+
+                        $stmt->close();
                     }
                 }
             }
 
-            $current_date = strtotime('+1 day', $current_date);
+            $next_date = strtotime('+1 day', $current_date);
+
+            if ($next_date === false) {
+                throw new Exception("Błąd obliczania kolejnej daty w planie rocznym");
+            }
+
+            $current_date = $next_date;
         }
     }
 

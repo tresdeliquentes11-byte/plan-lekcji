@@ -7,27 +7,59 @@ $message_type = '';
 
 // Dodawanie dnia wolnego
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['dodaj_dzien'])) {
-    $data = $_POST['data'];
-    $opis = $_POST['opis'];
-    
-    $stmt = $conn->prepare("INSERT INTO dni_wolne (data, opis) VALUES (?, ?)");
-    $stmt->bind_param("ss", $data, $opis);
-    
-    if ($stmt->execute()) {
-        $message = 'Dzień wolny został dodany';
-        $message_type = 'success';
-    } else {
-        $message = 'Ten dzień jest już w kalendarzu';
+    // CSRF Protection
+    if (!isset($_POST['csrf_token']) || !verify_csrf_token($_POST['csrf_token'])) {
+        $message = 'Nieprawidłowe żądanie. Odśwież stronę i spróbuj ponownie.';
         $message_type = 'error';
+    } else {
+        $data = $_POST['data'];
+        $opis = trim($_POST['opis']);
+
+        // Input validation
+        if (empty($data) || empty($opis)) {
+            $message = 'Data i opis są wymagane';
+            $message_type = 'error';
+        } elseif (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $data)) {
+            $message = 'Nieprawidłowy format daty';
+            $message_type = 'error';
+        } else {
+            $stmt = $conn->prepare("INSERT INTO dni_wolne (data, opis) VALUES (?, ?)");
+            $stmt->bind_param("ss", $data, $opis);
+
+            if ($stmt->execute()) {
+                $message = 'Dzień wolny został dodany';
+                $message_type = 'success';
+            } else {
+                error_log("Błąd dodawania dnia wolnego: " . $stmt->error);
+                $message = 'Ten dzień jest już w kalendarzu';
+                $message_type = 'error';
+            }
+            $stmt->close();
+        }
     }
 }
 
-// Usuwanie dnia wolnego
-if (isset($_GET['usun'])) {
-    $id = $_GET['usun'];
-    $conn->query("DELETE FROM dni_wolne WHERE id = $id");
-    $message = 'Dzień wolny został usunięty';
-    $message_type = 'success';
+// Usuwanie dnia wolnego (POST with CSRF)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['usun_dzien'])) {
+    // CSRF Protection
+    if (!isset($_POST['csrf_token']) || !verify_csrf_token($_POST['csrf_token'])) {
+        $message = 'Nieprawidłowe żądanie. Odśwież stronę i spróbuj ponownie.';
+        $message_type = 'error';
+    } else {
+        $id = intval($_POST['usun_dzien']);
+        $stmt = $conn->prepare("DELETE FROM dni_wolne WHERE id = ?");
+        $stmt->bind_param("i", $id);
+
+        if ($stmt->execute()) {
+            $message = 'Dzień wolny został usunięty';
+            $message_type = 'success';
+        } else {
+            error_log("Błąd usuwania dnia wolnego: " . $stmt->error);
+            $message = 'Błąd podczas usuwania dnia wolnego';
+            $message_type = 'error';
+        }
+        $stmt->close();
+    }
 }
 
 // Pobierz dni wolne
@@ -66,6 +98,7 @@ $dni_wolne = $conn->query("SELECT * FROM dni_wolne ORDER BY data");
             <div class="card">
                 <h3 class="card-title">Dodaj dzień wolny / święto</h3>
                 <form method="POST">
+                    <?php echo csrf_field(); ?>
                     <div style="display: grid; grid-template-columns: 200px 1fr auto; gap: 15px; align-items: end;">
                         <div class="form-group">
                             <label>Data</label>
@@ -100,10 +133,13 @@ $dni_wolne = $conn->query("SELECT * FROM dni_wolne ORDER BY data");
                                     <td><?php echo date('l', strtotime($d['data'])); ?></td>
                                     <td><?php echo e($d['opis']); ?></td>
                                     <td>
-                                        <a href="?usun=<?php echo $d['id']; ?>" 
-                                           class="btn btn-danger" 
-                                           style="padding: 5px 10px; font-size: 12px;"
-                                           onclick="return confirm('Czy na pewno?')">Usuń</a>
+                                        <form method="POST" style="display: inline;" onsubmit="return confirm('Czy na pewno?')">
+                                            <?php echo csrf_field(); ?>
+                                            <input type="hidden" name="usun_dzien" value="<?php echo $d['id']; ?>">
+                                            <button type="submit" class="btn btn-danger" style="padding: 5px 10px; font-size: 12px;">
+                                                Usuń
+                                            </button>
+                                        </form>
                                     </td>
                                 </tr>
                             <?php endwhile; ?>
@@ -138,14 +174,14 @@ $dni_wolne = $conn->query("SELECT * FROM dni_wolne ORDER BY data");
         const form = document.createElement('form');
         form.method = 'POST';
         form.innerHTML = `
+            <input type="hidden" name="csrf_token" value="<?php echo csrf_token(); ?>">
             <input type="hidden" name="data" value="${data}">
             <input type="hidden" name="opis" value="${opis}">
             <input type="hidden" name="dodaj_dzien" value="1">
         `;
         document.body.appendChild(form);
         form.submit();
-            </div>
-        </div>
-    </div>
+    }
+    </script>
 </body>
 </html>

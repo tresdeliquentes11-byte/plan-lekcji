@@ -9,7 +9,11 @@ $message = '';
 $message_type = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (isset($_POST['dodaj'])) {
+    // CSRF Protection
+    if (!isset($_POST['csrf_token']) || !verify_csrf_token($_POST['csrf_token'])) {
+        $message = 'Nieprawidłowe żądanie. Odśwież stronę i spróbuj ponownie.';
+        $message_type = 'error';
+    } elseif (isset($_POST['dodaj'])) {
         $dane = [
             'login' => $_POST['login'],
             'haslo' => $_POST['haslo'],
@@ -27,7 +31,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             loguj_operacje_uzytkownika('dodanie', $result['id'], "Dodano administratora: {$dane['login']}");
         }
     } elseif (isset($_POST['edytuj'])) {
-        $id = $_POST['id'];
+        $id = intval($_POST['id']);
         $dane = [
             'login' => $_POST['login'],
             'imie' => $_POST['imie'],
@@ -46,40 +50,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($result['success']) {
             loguj_operacje_uzytkownika('edycja', $id, "Zaktualizowano administratora: {$dane['login']}");
         }
-    }
-}
+    } elseif (isset($_POST['akcja']) && isset($_POST['id'])) {
+        $id = intval($_POST['id']);
+        $akcja = $_POST['akcja'];
 
-if (isset($_GET['akcja'])) {
-    $id = $_GET['id'] ?? 0;
+        switch ($akcja) {
+            case 'blokuj':
+                $result = zmien_status_uzytkownika($id, 0);
+                $message = $result['message'];
+                $message_type = $result['success'] ? 'success' : 'error';
+                if ($result['success']) {
+                    loguj_operacje_uzytkownika('blokada', $id, "Zablokowano administratora ID: $id");
+                }
+                break;
 
-    switch ($_GET['akcja']) {
-        case 'blokuj':
-            $result = zmien_status_uzytkownika($id, 0);
-            $message = $result['message'];
-            $message_type = $result['success'] ? 'success' : 'error';
-            if ($result['success']) {
-                loguj_operacje_uzytkownika('blokada', $id, "Zablokowano administratora ID: $id");
-            }
-            break;
+            case 'odblokuj':
+                $result = zmien_status_uzytkownika($id, 1);
+                $message = $result['message'];
+                $message_type = $result['success'] ? 'success' : 'error';
+                if ($result['success']) {
+                    loguj_operacje_uzytkownika('odblokowanie', $id, "Odblokowano administratora ID: $id");
+                }
+                break;
 
-        case 'odblokuj':
-            $result = zmien_status_uzytkownika($id, 1);
-            $message = $result['message'];
-            $message_type = $result['success'] ? 'success' : 'error';
-            if ($result['success']) {
-                loguj_operacje_uzytkownika('odblokowanie', $id, "Odblokowano administratora ID: $id");
-            }
-            break;
+            case 'usun':
+                // NAJPIERW loguj (przed usunięciem!)
+                loguj_operacje_uzytkownika('usuniecie', $id, "Usunięto administratora ID: $id");
 
-        case 'usun':
-            // NAJPIERW loguj (przed usunięciem!)
-            loguj_operacje_uzytkownika('usuniecie', $id, "Usunięto administratora ID: $id");
-
-            // POTEM usuń
-            $result = usun_uzytkownika($id);
-            $message = $result['message'];
-            $message_type = $result['success'] ? 'success' : 'error';
-            break;
+                // POTEM usuń
+                $result = usun_uzytkownika($id);
+                $message = $result['message'];
+                $message_type = $result['success'] ? 'success' : 'error';
+                break;
+        }
     }
 }
 

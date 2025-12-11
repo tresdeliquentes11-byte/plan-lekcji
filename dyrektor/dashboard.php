@@ -20,8 +20,12 @@ $stats['uczniowie'] = $result->fetch_assoc()['count'];
 // Liczba nieobecności w tym tygodniu
 $poczatek_tygodnia = pobierz_poczatek_tygodnia(date('Y-m-d'));
 $koniec_tygodnia = pobierz_koniec_tygodnia(date('Y-m-d'));
-$result = $conn->query("SELECT COUNT(*) as count FROM nieobecnosci WHERE data_od <= '$koniec_tygodnia' AND data_do >= '$poczatek_tygodnia'");
+$stmt = $conn->prepare("SELECT COUNT(*) as count FROM nieobecnosci WHERE data_od <= ? AND data_do >= ?");
+$stmt->bind_param("ss", $koniec_tygodnia, $poczatek_tygodnia);
+$stmt->execute();
+$result = $stmt->get_result();
 $stats['nieobecnosci'] = $result->fetch_assoc()['count'];
+$stmt->close();
 
 // Najnowsze nieobecności
 $nieobecnosci = $conn->query("

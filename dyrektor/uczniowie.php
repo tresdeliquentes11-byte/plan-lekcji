@@ -7,117 +7,162 @@ $message_type = '';
 
 // Dodawanie ucznia
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['dodaj'])) {
-    $imie = trim($_POST['imie']);
-    $nazwisko = trim($_POST['nazwisko']);
-    $email = trim($_POST['email']);
-    $login = trim($_POST['login']);
-    $haslo = password_hash($_POST['haslo'], PASSWORD_DEFAULT);
-    $klasa_id = intval($_POST['klasa_id']);
-
-    $conn->begin_transaction();
-
-    try {
-        // Sprawdź czy login jest unikalny
-        $check = $conn->prepare("SELECT id FROM uzytkownicy WHERE login = ?");
-        $check->bind_param("s", $login);
-        $check->execute();
-        if ($check->get_result()->num_rows > 0) {
-            throw new Exception("Login '$login' jest już zajęty");
-        }
-
-        // Dodaj użytkownika
-        $stmt = $conn->prepare("INSERT INTO uzytkownicy (login, haslo, typ, imie, nazwisko, email) VALUES (?, ?, 'uczen', ?, ?, ?)");
-        $stmt->bind_param("sssss", $login, $haslo, $imie, $nazwisko, $email);
-        $stmt->execute();
-        $uzytkownik_id = $conn->insert_id;
-
-        // Dodaj ucznia
-        $stmt = $conn->prepare("INSERT INTO uczniowie (uzytkownik_id, klasa_id) VALUES (?, ?)");
-        $stmt->bind_param("ii", $uzytkownik_id, $klasa_id);
-        $stmt->execute();
-
-        $conn->commit();
-        $message = 'Uczeń został dodany pomyślnie';
-        $message_type = 'success';
-    } catch (Exception $e) {
-        $conn->rollback();
-        $message = 'Błąd: ' . $e->getMessage();
+    // CSRF Protection
+    if (!isset($_POST['csrf_token']) || !verify_csrf_token($_POST['csrf_token'])) {
+        $message = 'Nieprawidłowe żądanie. Odśwież stronę i spróbuj ponownie.';
         $message_type = 'error';
+    } else {
+        $imie = trim($_POST['imie']);
+        $nazwisko = trim($_POST['nazwisko']);
+        $email = trim($_POST['email']);
+        $login = trim($_POST['login']);
+        $haslo = password_hash($_POST['haslo'], PASSWORD_DEFAULT);
+        $klasa_id = intval($_POST['klasa_id']);
+
+        $conn->begin_transaction();
+
+        try {
+            // Sprawdź czy login jest unikalny
+            $check = $conn->prepare("SELECT id FROM uzytkownicy WHERE login = ?");
+            $check->bind_param("s", $login);
+            $check->execute();
+            if ($check->get_result()->num_rows > 0) {
+                throw new Exception("Login '$login' jest już zajęty");
+            }
+
+            // Dodaj użytkownika
+            $stmt = $conn->prepare("INSERT INTO uzytkownicy (login, haslo, typ, imie, nazwisko, email) VALUES (?, ?, 'uczen', ?, ?, ?)");
+            $stmt->bind_param("sssss", $login, $haslo, $imie, $nazwisko, $email);
+            $stmt->execute();
+            $uzytkownik_id = $conn->insert_id;
+
+            // Dodaj ucznia
+            $stmt = $conn->prepare("INSERT INTO uczniowie (uzytkownik_id, klasa_id) VALUES (?, ?)");
+            $stmt->bind_param("ii", $uzytkownik_id, $klasa_id);
+            $stmt->execute();
+
+            $conn->commit();
+            $message = 'Uczeń został dodany pomyślnie';
+            $message_type = 'success';
+        } catch (Exception $e) {
+            $conn->rollback();
+            error_log("Błąd dodawania ucznia: " . $e->getMessage());
+            $message = 'Błąd: ' . $e->getMessage();
+            $message_type = 'error';
+        }
     }
 }
 
 // Edycja ucznia
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edytuj'])) {
-    $id = intval($_POST['id']);
-    $imie = trim($_POST['imie']);
-    $nazwisko = trim($_POST['nazwisko']);
-    $email = trim($_POST['email']);
-    $login = trim($_POST['login']);
-    $klasa_id = intval($_POST['klasa_id']);
-
-    $conn->begin_transaction();
-
-    try {
-        // Sprawdź czy login jest unikalny (oprócz tego użytkownika)
-        $check = $conn->prepare("SELECT id FROM uzytkownicy WHERE login = ? AND id != ?");
-        $check->bind_param("si", $login, $id);
-        $check->execute();
-        if ($check->get_result()->num_rows > 0) {
-            throw new Exception("Login '$login' jest już zajęty");
-        }
-
-        // Aktualizuj użytkownika
-        if (!empty($_POST['haslo'])) {
-            $haslo = password_hash($_POST['haslo'], PASSWORD_DEFAULT);
-            $stmt = $conn->prepare("UPDATE uzytkownicy SET login = ?, haslo = ?, imie = ?, nazwisko = ?, email = ? WHERE id = ?");
-            $stmt->bind_param("sssssi", $login, $haslo, $imie, $nazwisko, $email, $id);
-        } else {
-            $stmt = $conn->prepare("UPDATE uzytkownicy SET login = ?, imie = ?, nazwisko = ?, email = ? WHERE id = ?");
-            $stmt->bind_param("ssssi", $login, $imie, $nazwisko, $email, $id);
-        }
-        $stmt->execute();
-
-        // Aktualizuj klasę ucznia
-        $stmt = $conn->prepare("UPDATE uczniowie SET klasa_id = ? WHERE uzytkownik_id = ?");
-        $stmt->bind_param("ii", $klasa_id, $id);
-        $stmt->execute();
-
-        $conn->commit();
-        $message = 'Dane ucznia zostały zaktualizowane';
-        $message_type = 'success';
-    } catch (Exception $e) {
-        $conn->rollback();
-        $message = 'Błąd: ' . $e->getMessage();
+    // CSRF Protection
+    if (!isset($_POST['csrf_token']) || !verify_csrf_token($_POST['csrf_token'])) {
+        $message = 'Nieprawidłowe żądanie. Odśwież stronę i spróbuj ponownie.';
         $message_type = 'error';
-    }
-}
+    } else {
+        $id = intval($_POST['id']);
+        $imie = trim($_POST['imie']);
+        $nazwisko = trim($_POST['nazwisko']);
+        $email = trim($_POST['email']);
+        $login = trim($_POST['login']);
+        $klasa_id = intval($_POST['klasa_id']);
 
-// Blokowanie/Odblokowanie ucznia
-if (isset($_GET['akcja']) && isset($_GET['id'])) {
-    $id = intval($_GET['id']);
-
-    if ($_GET['akcja'] === 'blokuj') {
-        $conn->query("UPDATE uzytkownicy SET aktywny = 0 WHERE id = $id");
-        $message = 'Uczeń został zablokowany';
-        $message_type = 'success';
-    } elseif ($_GET['akcja'] === 'odblokuj') {
-        $conn->query("UPDATE uzytkownicy SET aktywny = 1 WHERE id = $id");
-        $message = 'Uczeń został odblokowany';
-        $message_type = 'success';
-    } elseif ($_GET['akcja'] === 'usun') {
-        // Sprawdź czy można usunąć
         $conn->begin_transaction();
+
         try {
-            // Usuń powiązane dane
-            $conn->query("DELETE FROM uczniowie WHERE uzytkownik_id = $id");
-            $conn->query("DELETE FROM uzytkownicy WHERE id = $id");
+            // Sprawdź czy login jest unikalny (oprócz tego użytkownika)
+            $check = $conn->prepare("SELECT id FROM uzytkownicy WHERE login = ? AND id != ?");
+            $check->bind_param("si", $login, $id);
+            $check->execute();
+            if ($check->get_result()->num_rows > 0) {
+                throw new Exception("Login '$login' jest już zajęty");
+            }
+
+            // Aktualizuj użytkownika
+            if (!empty($_POST['haslo'])) {
+                $haslo = password_hash($_POST['haslo'], PASSWORD_DEFAULT);
+                $stmt = $conn->prepare("UPDATE uzytkownicy SET login = ?, haslo = ?, imie = ?, nazwisko = ?, email = ? WHERE id = ?");
+                $stmt->bind_param("sssssi", $login, $haslo, $imie, $nazwisko, $email, $id);
+            } else {
+                $stmt = $conn->prepare("UPDATE uzytkownicy SET login = ?, imie = ?, nazwisko = ?, email = ? WHERE id = ?");
+                $stmt->bind_param("ssssi", $login, $imie, $nazwisko, $email, $id);
+            }
+            $stmt->execute();
+
+            // Aktualizuj klasę ucznia
+            $stmt = $conn->prepare("UPDATE uczniowie SET klasa_id = ? WHERE uzytkownik_id = ?");
+            $stmt->bind_param("ii", $klasa_id, $id);
+            $stmt->execute();
+
             $conn->commit();
-            $message = 'Uczeń został usunięty';
+            $message = 'Dane ucznia zostały zaktualizowane';
             $message_type = 'success';
         } catch (Exception $e) {
             $conn->rollback();
-            $message = 'Błąd podczas usuwania: ' . $e->getMessage();
+            error_log("Błąd edycji ucznia: " . $e->getMessage());
+            $message = 'Błąd: ' . $e->getMessage();
             $message_type = 'error';
+        }
+    }
+}
+
+// Blokowanie/Odblokowanie/Usuwanie ucznia (POST with CSRF)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['akcja']) && isset($_POST['id'])) {
+    // CSRF Protection
+    if (!isset($_POST['csrf_token']) || !verify_csrf_token($_POST['csrf_token'])) {
+        $message = 'Nieprawidłowe żądanie. Odśwież stronę i spróbuj ponownie.';
+        $message_type = 'error';
+    } else {
+        $id = intval($_POST['id']);
+        $akcja = $_POST['akcja'];
+
+        if ($akcja === 'blokuj') {
+            $stmt = $conn->prepare("UPDATE uzytkownicy SET aktywny = 0 WHERE id = ?");
+            $stmt->bind_param("i", $id);
+            if ($stmt->execute()) {
+                $message = 'Uczeń został zablokowany';
+                $message_type = 'success';
+            } else {
+                error_log("Błąd blokowania ucznia: " . $stmt->error);
+                $message = 'Błąd podczas blokowania ucznia';
+                $message_type = 'error';
+            }
+            $stmt->close();
+        } elseif ($akcja === 'odblokuj') {
+            $stmt = $conn->prepare("UPDATE uzytkownicy SET aktywny = 1 WHERE id = ?");
+            $stmt->bind_param("i", $id);
+            if ($stmt->execute()) {
+                $message = 'Uczeń został odblokowany';
+                $message_type = 'success';
+            } else {
+                error_log("Błąd odblokowywania ucznia: " . $stmt->error);
+                $message = 'Błąd podczas odblokowywania ucznia';
+                $message_type = 'error';
+            }
+            $stmt->close();
+        } elseif ($akcja === 'usun') {
+            $conn->begin_transaction();
+            try {
+                // Usuń powiązane dane
+                $stmt = $conn->prepare("DELETE FROM uczniowie WHERE uzytkownik_id = ?");
+                $stmt->bind_param("i", $id);
+                $stmt->execute();
+                $stmt->close();
+
+                $stmt = $conn->prepare("DELETE FROM uzytkownicy WHERE id = ?");
+                $stmt->bind_param("i", $id);
+                $stmt->execute();
+                $stmt->close();
+
+                $conn->commit();
+                $message = 'Uczeń został usunięty';
+                $message_type = 'success';
+            } catch (Exception $e) {
+                $conn->rollback();
+                error_log("Błąd usuwania ucznia: " . $e->getMessage());
+                $message = 'Błąd podczas usuwania: ' . $e->getMessage();
+                $message_type = 'error';
+            }
         }
     }
 }
@@ -138,13 +183,17 @@ $klasy = $conn->query("SELECT * FROM klasy ORDER BY nazwa");
 $edytowany_uzytkownik = null;
 if (isset($_GET['edytuj'])) {
     $id = intval($_GET['edytuj']);
-    $result = $conn->query("
+    $stmt = $conn->prepare("
         SELECT u.*, uc.klasa_id
         FROM uzytkownicy u
         LEFT JOIN uczniowie uc ON u.id = uc.uzytkownik_id
-        WHERE u.id = $id AND u.typ = 'uczen'
+        WHERE u.id = ? AND u.typ = 'uczen'
     ");
+    $stmt->bind_param("i", $id);
+    $stmt->execute();
+    $result = $stmt->get_result();
     $edytowany_uzytkownik = $result->fetch_assoc();
+    $stmt->close();
 }
 ?>
 <!DOCTYPE html>
@@ -183,6 +232,7 @@ if (isset($_GET['edytuj'])) {
                     <?php echo $edytowany_uzytkownik ? 'Edytuj ucznia' : 'Dodaj nowego ucznia'; ?>
                 </h3>
                 <form method="POST">
+                    <?php echo csrf_field(); ?>
                     <?php if ($edytowany_uzytkownik): ?>
                         <input type="hidden" name="id" value="<?php echo $edytowany_uzytkownik['id']; ?>">
                     <?php endif; ?>
@@ -299,25 +349,32 @@ if (isset($_GET['edytuj'])) {
                                                 Edytuj
                                             </a>
                                             <?php if ($u['aktywny']): ?>
-                                                <a href="uczniowie.php?akcja=blokuj&id=<?php echo $u['id']; ?>"
-                                                   class="btn btn-warning"
-                                                   style="font-size: 12px; padding: 5px 10px;"
-                                                   onclick="return confirm('Czy na pewno chcesz zablokować tego ucznia?')">
-                                                    Blokuj
-                                                </a>
+                                                <form method="POST" style="display: inline;" onsubmit="return confirm('Czy na pewno chcesz zablokować tego ucznia?')">
+                                                    <?php echo csrf_field(); ?>
+                                                    <input type="hidden" name="akcja" value="blokuj">
+                                                    <input type="hidden" name="id" value="<?php echo $u['id']; ?>">
+                                                    <button type="submit" class="btn btn-warning" style="font-size: 12px; padding: 5px 10px;">
+                                                        Blokuj
+                                                    </button>
+                                                </form>
                                             <?php else: ?>
-                                                <a href="uczniowie.php?akcja=odblokuj&id=<?php echo $u['id']; ?>"
-                                                   class="btn btn-success"
-                                                   style="font-size: 12px; padding: 5px 10px;">
-                                                    Odblokuj
-                                                </a>
+                                                <form method="POST" style="display: inline;">
+                                                    <?php echo csrf_field(); ?>
+                                                    <input type="hidden" name="akcja" value="odblokuj">
+                                                    <input type="hidden" name="id" value="<?php echo $u['id']; ?>">
+                                                    <button type="submit" class="btn btn-success" style="font-size: 12px; padding: 5px 10px;">
+                                                        Odblokuj
+                                                    </button>
+                                                </form>
                                             <?php endif; ?>
-                                            <a href="uczniowie.php?akcja=usun&id=<?php echo $u['id']; ?>"
-                                               class="btn btn-danger"
-                                               style="font-size: 12px; padding: 5px 10px;"
-                                               onclick="return confirm('Czy na pewno chcesz usunąć tego ucznia? Ta operacja jest nieodwracalna!')">
-                                                Usuń
-                                            </a>
+                                            <form method="POST" style="display: inline;" onsubmit="return confirm('Czy na pewno chcesz usunąć tego ucznia? Ta operacja jest nieodwracalna!')">
+                                                <?php echo csrf_field(); ?>
+                                                <input type="hidden" name="akcja" value="usun">
+                                                <input type="hidden" name="id" value="<?php echo $u['id']; ?>">
+                                                <button type="submit" class="btn btn-danger" style="font-size: 12px; padding: 5px 10px;">
+                                                    Usuń
+                                                </button>
+                                            </form>
                                         </td>
                                     </tr>
                                 <?php endwhile; ?>

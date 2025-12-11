@@ -11,10 +11,20 @@ require_once 'includes/admin_functions.php';
 $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $login = $_POST['login'] ?? '';
-    $haslo = $_POST['haslo'] ?? '';
+    // CSRF Protection
+    if (!isset($_POST['csrf_token']) || !verify_csrf_token($_POST['csrf_token'])) {
+        $error = 'Nieprawidłowe żądanie. Odśwież stronę i spróbuj ponownie.';
+    } else {
+        // Rate Limiting
+        $rate_limit = check_rate_limit('login_' . $_SERVER['REMOTE_ADDR'], 5, 15);
 
-    if ($login && $haslo) {
+        if (!$rate_limit['allowed']) {
+            $error = $rate_limit['message'];
+        } else {
+            $login = $_POST['login'] ?? '';
+            $haslo = $_POST['haslo'] ?? '';
+
+            if ($login && $haslo) {
         $stmt = $conn->prepare("SELECT id, login, haslo, typ, imie, nazwisko FROM uzytkownicy WHERE login = ? AND aktywny = 1");
         $stmt->bind_param("s", $login);
         $stmt->execute();
@@ -30,9 +40,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['user_type'] = $user['typ'];
                 $_SESSION['user_name'] = $user['imie'] . ' ' . $user['nazwisko'];
 
+                // Reset rate limit on successful login
+                reset_rate_limit('login_' . $_SERVER['REMOTE_ADDR']);
+
                 // Zarządzaj sesją i loguj aktywność
                 zarzadzaj_sesja($user['id'], 'login');
                 loguj_aktywnosc($user['id'], 'logowanie', "Użytkownik {$user['login']} zalogował się do systemu");
+
+                // Regenerate session ID to prevent session fixation
+                session_regenerate_id(true);
 
                 // Przekierowanie w zależności od typu użytkownika
                 switch ($user['typ']) {
@@ -68,10 +84,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $error = 'Nieprawidłowy login lub hasło';
             }
             $stmt2->close();
+            }
+            $stmt->close();
+        } else {
+            $error = 'Proszę wypełnić wszystkie pola';
         }
-        $stmt->close();
-    } else {
-        $error = 'Proszę wypełnić wszystkie pola';
+        }
     }
 }
 ?>
@@ -92,24 +110,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php endif; ?>
         
         <form method="POST" action="">
+            <?php echo csrf_field(); ?>
             <div class="form-group">
                 <label for="login">Login</label>
-                <input type="text" id="login" name="login" required autofocus>
+                <input type="text" id="login" name="login" required autofocus autocomplete="username">
             </div>
-            
+
             <div class="form-group">
                 <label for="haslo">Hasło</label>
-                <input type="password" id="haslo" name="haslo" required>
+                <input type="password" id="haslo" name="haslo" required autocomplete="current-password">
             </div>
-            
+
             <button type="submit" class="btn btn-primary btn-full">Zaloguj się</button>
         </form>
-        
-        <div style="margin-top: 30px; padding-top: 20px; border-top: 2px solid #e9ecef; font-size: 13px; color: #6c757d;">
-            <strong>Domyślne konta testowe:</strong><br>
-            Dyrektor: dyrektor / dyrektor123<br>
-            Administrator: admin / admin123
-        </div>
     </div>
 </body>
 </html>

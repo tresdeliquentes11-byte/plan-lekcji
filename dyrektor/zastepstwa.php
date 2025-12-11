@@ -8,45 +8,80 @@ $message_type = '';
 
 // Dodawanie nieobecności
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['dodaj_nieobecnosc'])) {
-    $nauczyciel_id = $_POST['nauczyciel_id'];
-    $data_od = $_POST['data_od'];
-    $data_do = $_POST['data_do'];
-    $powod = $_POST['powod'] ?? '';
-    
-    $stmt = $conn->prepare("INSERT INTO nieobecnosci (nauczyciel_id, data_od, data_do, powod) VALUES (?, ?, ?, ?)");
-    $stmt->bind_param("isss", $nauczyciel_id, $data_od, $data_do, $powod);
-    
-    if ($stmt->execute()) {
-        $nieobecnosc_id = $conn->insert_id;
-        
-        // Generujemy zastępstwa
-        $generator = new GeneratorZastepstw($conn);
-        $wynik = $generator->generujZastepstwa($nieobecnosc_id);
-        
-        $message = "Nieobecność została dodana. Utworzono {$wynik['utworzone']} zastępstw.";
-        if (count($wynik['pominiete']) > 0) {
-            $message .= " Pominięto " . count($wynik['pominiete']) . " lekcji (początkowe/końcowe godziny klasy).";
-        }
-        if (count($wynik['niemozliwe']) > 0) {
-            $message .= " Nie udało się utworzyć zastępstw dla " . count($wynik['niemozliwe']) . " lekcji (brak dostępnych nauczycieli).";
-        }
-        $message_type = 'success';
-    } else {
-        $message = 'Błąd podczas dodawania nieobecności';
+    // CSRF Protection
+    if (!isset($_POST['csrf_token']) || !verify_csrf_token($_POST['csrf_token'])) {
+        $message = 'Nieprawidłowe żądanie. Odśwież stronę i spróbuj ponownie.';
         $message_type = 'error';
+    } else {
+        $nauczyciel_id = intval($_POST['nauczyciel_id']);
+        $data_od = $_POST['data_od'];
+        $data_do = $_POST['data_do'];
+        $powod = trim($_POST['powod'] ?? '');
+
+        // Input validation
+        if (empty($nauczyciel_id) || empty($data_od) || empty($data_do)) {
+            $message = 'Wszystkie pola są wymagane';
+            $message_type = 'error';
+        } elseif (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $data_od) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $data_do)) {
+            $message = 'Nieprawidłowy format daty';
+            $message_type = 'error';
+        } elseif (strtotime($data_od) > strtotime($data_do)) {
+            $message = 'Data zakończenia nie może być wcześniejsza niż data rozpoczęcia';
+            $message_type = 'error';
+        } else {
+            $stmt = $conn->prepare("INSERT INTO nieobecnosci (nauczyciel_id, data_od, data_do, powod) VALUES (?, ?, ?, ?)");
+            $stmt->bind_param("isss", $nauczyciel_id, $data_od, $data_do, $powod);
+
+            if ($stmt->execute()) {
+                $nieobecnosc_id = $conn->insert_id;
+
+                // Generujemy zastępstwa
+                $generator = new GeneratorZastepstw($conn);
+                $wynik = $generator->generujZastepstwa($nieobecnosc_id);
+
+                $message = "Nieobecność została dodana. Utworzono {$wynik['utworzone']} zastępstw.";
+                if (count($wynik['pominiete']) > 0) {
+                    $message .= " Pominięto " . count($wynik['pominiete']) . " lekcji (początkowe/końcowe godziny klasy).";
+                }
+                if (count($wynik['niemozliwe']) > 0) {
+                    $message .= " Nie udało się utworzyć zastępstw dla " . count($wynik['niemozliwe']) . " lekcji (brak dostępnych nauczycieli).";
+                }
+                $message_type = 'success';
+            } else {
+                error_log("Błąd dodawania nieobecności: " . $stmt->error);
+                $message = 'Błąd podczas dodawania nieobecności';
+                $message_type = 'error';
+            }
+            $stmt->close();
+        }
     }
 }
 
-// Usuwanie nieobecności
-if (isset($_GET['usun'])) {
-    $id = $_GET['usun'];
-    
-    $generator = new GeneratorZastepstw($conn);
-    $generator->usunZastepstwa($id);
-    
-    $conn->query("DELETE FROM nieobecnosci WHERE id = $id");
-    $message = 'Nieobecność została usunięta wraz z zastępstwami';
-    $message_type = 'success';
+// Usuwanie nieobecności (POST with CSRF)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['usun_nieobecnosc'])) {
+    // CSRF Protection
+    if (!isset($_POST['csrf_token']) || !verify_csrf_token($_POST['csrf_token'])) {
+        $message = 'Nieprawidłowe żądanie. Odśwież stronę i spróbuj ponownie.';
+        $message_type = 'error';
+    } else {
+        $id = intval($_POST['usun_nieobecnosc']);
+
+        $generator = new GeneratorZastepstw($conn);
+        $generator->usunZastepstwa($id);
+
+        $stmt = $conn->prepare("DELETE FROM nieobecnosci WHERE id = ?");
+        $stmt->bind_param("i", $id);
+
+        if ($stmt->execute()) {
+            $message = 'Nieobecność została usunięta wraz z zastępstwami';
+            $message_type = 'success';
+        } else {
+            error_log("Błąd usuwania nieobecności: " . $stmt->error);
+            $message = 'Błąd podczas usuwania nieobecności';
+            $message_type = 'error';
+        }
+        $stmt->close();
+    }
 }
 
 // Pobieramy listę nauczycieli
@@ -99,8 +134,9 @@ $nieobecnosci = $conn->query("
             
             <div class="card">
                 <h3 class="card-title">Dodaj nieobecność nauczyciela</h3>
-                
+
                 <form method="POST">
+                    <?php echo csrf_field(); ?>
                     <div class="form-group">
                         <label for="nauczyciel_id">Nauczyciel</label>
                         <select id="nauczyciel_id" name="nauczyciel_id" required>
@@ -172,12 +208,13 @@ $nieobecnosci = $conn->query("
                                     <td><?php echo $n['liczba_zastepstw']; ?></td>
                                     <td><?php echo formatuj_date($n['data_zgloszenia']); ?></td>
                                     <td>
-                                        <a href="?usun=<?php echo $n['id']; ?>" 
-                                           class="btn btn-danger" 
-                                           style="padding: 5px 10px; font-size: 12px;"
-                                           onclick="return confirm('Czy na pewno chcesz usunąć tę nieobecność? Wszystkie zastępstwa zostaną anulowane.')">
-                                            Usuń
-                                        </a>
+                                        <form method="POST" style="display: inline;" onsubmit="return confirm('Czy na pewno chcesz usunąć tę nieobecność? Wszystkie zastępstwa zostaną anulowane.')">
+                                            <?php echo csrf_field(); ?>
+                                            <input type="hidden" name="usun_nieobecnosc" value="<?php echo $n['id']; ?>">
+                                            <button type="submit" class="btn btn-danger" style="padding: 5px 10px; font-size: 12px;">
+                                                Usuń
+                                            </button>
+                                        </form>
                                     </td>
                                 </tr>
                             <?php endwhile; ?>

@@ -11,91 +11,131 @@ $message_type = '';
 
 // Dodawanie nowej klasy
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['dodaj_klase'])) {
-    $nazwa = trim($_POST['nazwa']);
-    $ilosc_godzin_dziennie = intval($_POST['ilosc_godzin_dziennie']);
-    $rozszerzenie_1 = $_POST['rozszerzenie_1'];
-    $rozszerzenie_2 = $_POST['rozszerzenie_2'];
-    $wychowawca_id = !empty($_POST['wychowawca_id']) ? intval($_POST['wychowawca_id']) : null;
-
-    // Walidacja
-    if (empty($nazwa)) {
-        $message = 'Nazwa klasy jest wymagana';
-        $message_type = 'danger';
-    } elseif (strlen($nazwa) > 10) {
-        $message = 'Nazwa klasy może mieć maksymalnie 10 znaków';
+    // CSRF Protection
+    if (!isset($_POST['csrf_token']) || !verify_csrf_token($_POST['csrf_token'])) {
+        $message = 'Nieprawidłowe żądanie. Odśwież stronę i spróbuj ponownie.';
         $message_type = 'danger';
     } else {
-        // Sprawdź czy klasa o takiej nazwie już istnieje
-        $check = $conn->prepare("SELECT id FROM klasy WHERE nazwa = ?");
-        $check->bind_param("s", $nazwa);
-        $check->execute();
-        $result = $check->get_result();
+        $nazwa = trim($_POST['nazwa']);
+        $ilosc_godzin_dziennie = intval($_POST['ilosc_godzin_dziennie']);
+        $rozszerzenie_1 = $_POST['rozszerzenie_1'];
+        $rozszerzenie_2 = $_POST['rozszerzenie_2'];
+        $wychowawca_id = !empty($_POST['wychowawca_id']) ? intval($_POST['wychowawca_id']) : null;
 
-        if ($result->num_rows > 0) {
-            $message = 'Klasa o nazwie "' . e($nazwa) . '" już istnieje';
+        // Walidacja
+        if (empty($nazwa)) {
+            $message = 'Nazwa klasy jest wymagana';
+            $message_type = 'danger';
+        } elseif (strlen($nazwa) > 10) {
+            $message = 'Nazwa klasy może mieć maksymalnie 10 znaków';
             $message_type = 'danger';
         } else {
-            // Dodaj klasę
-            $stmt = $conn->prepare("INSERT INTO klasy (nazwa, wychowawca_id, ilosc_godzin_dziennie, rozszerzenie_1, rozszerzenie_2) VALUES (?, ?, ?, ?, ?)");
-            $stmt->bind_param("siiss", $nazwa, $wychowawca_id, $ilosc_godzin_dziennie, $rozszerzenie_1, $rozszerzenie_2);
+            // Sprawdź czy klasa o takiej nazwie już istnieje
+            $check = $conn->prepare("SELECT id FROM klasy WHERE nazwa = ?");
+            $check->bind_param("s", $nazwa);
+            $check->execute();
+            $result = $check->get_result();
 
-            if ($stmt->execute()) {
-                $message = 'Klasa "' . e($nazwa) . '" została dodana pomyślnie';
-                $message_type = 'success';
-
-                // Logowanie akcji
-                loguj_aktywnosc($_SESSION['user_id'], 'dodanie_klasy', 'Dodano klasę: ' . $nazwa);
-            } else {
-                $message = 'Błąd podczas dodawania klasy: ' . $conn->error;
+            if ($result->num_rows > 0) {
+                $message = 'Klasa o nazwie "' . e($nazwa) . '" już istnieje';
                 $message_type = 'danger';
+            } else {
+                // Dodaj klasę
+                $stmt = $conn->prepare("INSERT INTO klasy (nazwa, wychowawca_id, ilosc_godzin_dziennie, rozszerzenie_1, rozszerzenie_2) VALUES (?, ?, ?, ?, ?)");
+                $stmt->bind_param("siiss", $nazwa, $wychowawca_id, $ilosc_godzin_dziennie, $rozszerzenie_1, $rozszerzenie_2);
+
+                if ($stmt->execute()) {
+                    $message = 'Klasa "' . e($nazwa) . '" została dodana pomyślnie';
+                    $message_type = 'success';
+
+                    // Logowanie akcji
+                    loguj_aktywnosc($_SESSION['user_id'], 'dodanie_klasy', 'Dodano klasę: ' . $nazwa);
+                } else {
+                    error_log("Błąd dodawania klasy: " . $conn->error);
+                    $message = 'Błąd podczas dodawania klasy';
+                    $message_type = 'danger';
+                }
+                $stmt->close();
             }
+            $check->close();
         }
     }
 }
 
 // Usuwanie klasy
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['usun_klase'])) {
-    $klasa_id = intval($_POST['klasa_id']);
+    // CSRF Protection
+    if (!isset($_POST['csrf_token']) || !verify_csrf_token($_POST['csrf_token'])) {
+        $message = 'Nieprawidłowe żądanie. Odśwież stronę i spróbuj ponownie.';
+        $message_type = 'danger';
+    } else {
+        $klasa_id = intval($_POST['klasa_id']);
 
-    // Pobierz nazwę klasy przed usunięciem
-    $klasa = $conn->query("SELECT nazwa FROM klasy WHERE id = $klasa_id")->fetch_assoc();
+        // Pobierz nazwę klasy przed usunięciem
+        $stmt_get_klasa = $conn->prepare("SELECT nazwa FROM klasy WHERE id = ?");
+        $stmt_get_klasa->bind_param("i", $klasa_id);
+        $stmt_get_klasa->execute();
+        $klasa_result = $stmt_get_klasa->get_result();
+        $klasa = $klasa_result->fetch_assoc();
+        $stmt_get_klasa->close();
 
-    if ($klasa) {
-        // Sprawdź czy są powiązane dane
-        $powiazania = [];
+        if ($klasa) {
+            // Sprawdź czy są powiązane dane
+            $powiazania = [];
 
-        // Sprawdź uczniów
-        $uczniowie_count = $conn->query("SELECT COUNT(*) as cnt FROM uczniowie WHERE klasa_id = $klasa_id")->fetch_assoc()['cnt'];
-        if ($uczniowie_count > 0) {
-            $powiazania[] = "$uczniowie_count uczniów";
-        }
+            // Sprawdź uczniów
+            $stmt_uczniowie = $conn->prepare("SELECT COUNT(*) as cnt FROM uczniowie WHERE klasa_id = ?");
+            $stmt_uczniowie->bind_param("i", $klasa_id);
+            $stmt_uczniowie->execute();
+            $uczniowie_count = $stmt_uczniowie->get_result()->fetch_assoc()['cnt'];
+            $stmt_uczniowie->close();
 
-        // Sprawdź przypisane przedmioty
-        $przedmioty_count = $conn->query("SELECT COUNT(*) as cnt FROM klasa_przedmioty WHERE klasa_id = $klasa_id")->fetch_assoc()['cnt'];
-        if ($przedmioty_count > 0) {
-            $powiazania[] = "$przedmioty_count przypisanych przedmiotów";
-        }
+            if ($uczniowie_count > 0) {
+                $powiazania[] = "$uczniowie_count uczniów";
+            }
 
-        // Sprawdź plan lekcji
-        $plan_count = $conn->query("SELECT COUNT(*) as cnt FROM plan_lekcji WHERE klasa_id = $klasa_id")->fetch_assoc()['cnt'];
-        if ($plan_count > 0) {
-            $powiazania[] = "$plan_count lekcji w planie";
-        }
+            // Sprawdź przypisane przedmioty
+            $stmt_przedmioty = $conn->prepare("SELECT COUNT(*) as cnt FROM klasa_przedmioty WHERE klasa_id = ?");
+            $stmt_przedmioty->bind_param("i", $klasa_id);
+            $stmt_przedmioty->execute();
+            $przedmioty_count = $stmt_przedmioty->get_result()->fetch_assoc()['cnt'];
+            $stmt_przedmioty->close();
 
-        if (!empty($powiazania)) {
-            $message = 'Nie można usunąć klasy "' . e($klasa['nazwa']) . '". Klasa ma powiązane dane: ' . implode(', ', $powiazania) . '. Najpierw usuń lub przenieś powiązane dane.';
-            $message_type = 'danger';
-        } else {
-            // Usuń klasę
-            if ($conn->query("DELETE FROM klasy WHERE id = $klasa_id")) {
-                $message = 'Klasa "' . e($klasa['nazwa']) . '" została usunięta pomyślnie';
-                $message_type = 'success';
+            if ($przedmioty_count > 0) {
+                $powiazania[] = "$przedmioty_count przypisanych przedmiotów";
+            }
 
-                // Logowanie akcji
-                loguj_aktywnosc($_SESSION['user_id'], 'usuniecie_klasy', 'Usunięto klasę: ' . $klasa['nazwa']);
-            } else {
-                $message = 'Błąd podczas usuwania klasy: ' . $conn->error;
+            // Sprawdź plan lekcji
+            $stmt_plan = $conn->prepare("SELECT COUNT(*) as cnt FROM plan_lekcji WHERE klasa_id = ?");
+            $stmt_plan->bind_param("i", $klasa_id);
+            $stmt_plan->execute();
+            $plan_count = $stmt_plan->get_result()->fetch_assoc()['cnt'];
+            $stmt_plan->close();
+
+            if ($plan_count > 0) {
+                $powiazania[] = "$plan_count lekcji w planie";
+            }
+
+            if (!empty($powiazania)) {
+                $message = 'Nie można usunąć klasy "' . e($klasa['nazwa']) . '". Klasa ma powiązane dane: ' . implode(', ', $powiazania) . '. Najpierw usuń lub przenieś powiązane dane.';
                 $message_type = 'danger';
+            } else {
+                // Usuń klasę
+                $stmt_delete = $conn->prepare("DELETE FROM klasy WHERE id = ?");
+                $stmt_delete->bind_param("i", $klasa_id);
+
+                if ($stmt_delete->execute()) {
+                    $message = 'Klasa "' . e($klasa['nazwa']) . '" została usunięta pomyślnie';
+                    $message_type = 'success';
+
+                    // Logowanie akcji
+                    loguj_aktywnosc($_SESSION['user_id'], 'usuniecie_klasy', 'Usunięto klasę: ' . $klasa['nazwa']);
+                } else {
+                    error_log("Błąd usuwania klasy: " . $conn->error);
+                    $message = 'Błąd podczas usuwania klasy';
+                    $message_type = 'danger';
+                }
+                $stmt_delete->close();
             }
         }
     }
@@ -300,6 +340,7 @@ $klasy = $conn->query("
                 <div class="card">
                     <h3 class="card-title">Dodaj nową klasę</h3>
                     <form method="POST">
+                        <?php echo csrf_field(); ?>
                         <div class="form-grid">
                             <div class="form-group">
                                 <label>Nazwa klasy *</label>
@@ -437,6 +478,7 @@ $klasy = $conn->query("
             <div class="modal-header">Potwierdź usunięcie klasy</div>
             <p id="deleteMessage"></p>
             <form method="POST" id="deleteForm">
+                <?php echo csrf_field(); ?>
                 <input type="hidden" name="klasa_id" id="deleteKlasaId">
                 <div class="modal-buttons">
                     <button type="button" class="btn btn-secondary" onclick="closeDeleteModal()">Anuluj</button>

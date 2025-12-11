@@ -7,51 +7,85 @@ $message_type = '';
 
 // Dodawanie nauczyciela
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['dodaj'])) {
-    $imie = $_POST['imie'];
-    $nazwisko = $_POST['nazwisko'];
-    $email = $_POST['email'];
-    $login = $_POST['login'];
-    $haslo = password_hash($_POST['haslo'], PASSWORD_DEFAULT);
-    $przedmioty = $_POST['przedmioty'] ?? [];
-    
-    $conn->begin_transaction();
-    
-    try {
-        // Dodaj użytkownika
-        $stmt = $conn->prepare("INSERT INTO uzytkownicy (login, haslo, typ, imie, nazwisko, email) VALUES (?, ?, 'nauczyciel', ?, ?, ?)");
-        $stmt->bind_param("sssss", $login, $haslo, $imie, $nazwisko, $email);
-        $stmt->execute();
-        $uzytkownik_id = $conn->insert_id;
-        
-        // Dodaj nauczyciela
-        $stmt = $conn->prepare("INSERT INTO nauczyciele (uzytkownik_id) VALUES (?)");
-        $stmt->bind_param("i", $uzytkownik_id);
-        $stmt->execute();
-        $nauczyciel_id = $conn->insert_id;
-        
-        // Przypisz przedmioty
-        foreach ($przedmioty as $przedmiot_id) {
-            $stmt = $conn->prepare("INSERT INTO nauczyciel_przedmioty (nauczyciel_id, przedmiot_id) VALUES (?, ?)");
-            $stmt->bind_param("ii", $nauczyciel_id, $przedmiot_id);
-            $stmt->execute();
-        }
-        
-        $conn->commit();
-        $message = 'Nauczyciel został dodany pomyślnie';
-        $message_type = 'success';
-    } catch (Exception $e) {
-        $conn->rollback();
-        $message = 'Błąd: ' . $e->getMessage();
+    // CSRF Protection
+    if (!isset($_POST['csrf_token']) || !verify_csrf_token($_POST['csrf_token'])) {
+        $message = 'Nieprawidłowe żądanie. Odśwież stronę i spróbuj ponownie.';
         $message_type = 'error';
+    } else {
+        $imie = trim($_POST['imie']);
+        $nazwisko = trim($_POST['nazwisko']);
+        $email = trim($_POST['email']);
+        $login = trim($_POST['login']);
+        $haslo = password_hash($_POST['haslo'], PASSWORD_DEFAULT);
+        $przedmioty = $_POST['przedmioty'] ?? [];
+
+        // Input validation
+        if (empty($imie) || empty($nazwisko) || empty($email) || empty($login)) {
+            $message = 'Wszystkie pola są wymagane';
+            $message_type = 'error';
+        } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $message = 'Nieprawidłowy adres email';
+            $message_type = 'error';
+        } else {
+            $conn->begin_transaction();
+
+            try {
+                // Dodaj użytkownika
+                $stmt = $conn->prepare("INSERT INTO uzytkownicy (login, haslo, typ, imie, nazwisko, email) VALUES (?, ?, 'nauczyciel', ?, ?, ?)");
+                $stmt->bind_param("sssss", $login, $haslo, $imie, $nazwisko, $email);
+                $stmt->execute();
+                $uzytkownik_id = $conn->insert_id;
+
+                // Dodaj nauczyciela
+                $stmt = $conn->prepare("INSERT INTO nauczyciele (uzytkownik_id) VALUES (?)");
+                $stmt->bind_param("i", $uzytkownik_id);
+                $stmt->execute();
+                $nauczyciel_id = $conn->insert_id;
+
+                // Przypisz przedmioty
+                foreach ($przedmioty as $przedmiot_id) {
+                    $przedmiot_id = intval($przedmiot_id);
+                    $stmt = $conn->prepare("INSERT INTO nauczyciel_przedmioty (nauczyciel_id, przedmiot_id) VALUES (?, ?)");
+                    $stmt->bind_param("ii", $nauczyciel_id, $przedmiot_id);
+                    $stmt->execute();
+                }
+
+                $conn->commit();
+                $message = 'Nauczyciel został dodany pomyślnie';
+                $message_type = 'success';
+            } catch (Exception $e) {
+                $conn->rollback();
+                error_log("Błąd dodawania nauczyciela: " . $e->getMessage());
+                $message = 'Błąd podczas dodawania nauczyciela';
+                $message_type = 'error';
+            }
+        }
     }
 }
 
-// Usuwanie nauczyciela
-if (isset($_GET['usun'])) {
-    $id = $_GET['usun'];
-    $conn->query("DELETE FROM uzytkownicy WHERE id IN (SELECT uzytkownik_id FROM nauczyciele WHERE id = $id)");
-    $message = 'Nauczyciel został usunięty';
-    $message_type = 'success';
+// Usuwanie nauczyciela (POST with CSRF)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['usun_nauczyciela'])) {
+    // CSRF Protection
+    if (!isset($_POST['csrf_token']) || !verify_csrf_token($_POST['csrf_token'])) {
+        $message = 'Nieprawidłowe żądanie. Odśwież stronę i spróbuj ponownie.';
+        $message_type = 'error';
+    } else {
+        $id = intval($_POST['usun_nauczyciela']);
+
+        // Use subquery with prepared statement
+        $stmt = $conn->prepare("DELETE FROM uzytkownicy WHERE id IN (SELECT uzytkownik_id FROM nauczyciele WHERE id = ?)");
+        $stmt->bind_param("i", $id);
+
+        if ($stmt->execute()) {
+            $message = 'Nauczyciel został usunięty';
+            $message_type = 'success';
+        } else {
+            error_log("Błąd usuwania nauczyciela: " . $stmt->error);
+            $message = 'Błąd podczas usuwania nauczyciela';
+            $message_type = 'error';
+        }
+        $stmt->close();
+    }
 }
 
 // Pobierz nauczycieli
@@ -100,6 +134,7 @@ $przedmioty = $conn->query("SELECT * FROM przedmioty ORDER BY nazwa");
             <div class="card">
                 <h3 class="card-title">Dodaj nowego nauczyciela</h3>
                 <form method="POST">
+                    <?php echo csrf_field(); ?>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
                         <div class="form-group">
                             <label>Imię</label>
@@ -159,10 +194,13 @@ $przedmioty = $conn->query("SELECT * FROM przedmioty ORDER BY nazwa");
                                 <td><?php echo e($n['login']); ?></td>
                                 <td><?php echo e($n['przedmioty'] ?? 'Brak'); ?></td>
                                 <td>
-                                    <a href="?usun=<?php echo $n['id']; ?>" 
-                                       class="btn btn-danger" 
-                                       style="padding: 5px 10px; font-size: 12px;"
-                                       onclick="return confirm('Czy na pewno?')">Usuń</a>
+                                    <form method="POST" style="display: inline;" onsubmit="return confirm('Czy na pewno?')">
+                                        <?php echo csrf_field(); ?>
+                                        <input type="hidden" name="usun_nauczyciela" value="<?php echo $n['id']; ?>">
+                                        <button type="submit" class="btn btn-danger" style="padding: 5px 10px; font-size: 12px;">
+                                            Usuń
+                                        </button>
+                                    </form>
                                 </td>
                             </tr>
                         <?php endwhile; ?>

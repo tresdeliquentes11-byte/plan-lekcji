@@ -2,21 +2,38 @@
 require_once '../includes/config.php';
 sprawdz_uprawnienia('nauczyciel');
 
-// Pobierz ID nauczyciela
-$nauczyciel_result = $conn->query("
+// Pobierz ID nauczyciela - używamy prepared statement
+$stmt = $conn->prepare("
     SELECT n.id, u.imie, u.nazwisko
     FROM nauczyciele n
     JOIN uzytkownicy u ON n.uzytkownik_id = u.id
-    WHERE n.uzytkownik_id = {$_SESSION['user_id']}
+    WHERE n.uzytkownik_id = ?
 ");
 
+if (!$stmt) {
+    error_log("Błąd przygotowania zapytania dla nauczyciela: " . $conn->error);
+    die("Błąd: Nie można pobrać danych nauczyciela");
+}
+
+$stmt->bind_param("i", $_SESSION['user_id']);
+
+if (!$stmt->execute()) {
+    error_log("Błąd wykonania zapytania dla nauczyciela: " . $stmt->error);
+    $stmt->close();
+    die("Błąd: Nie można pobrać danych nauczyciela");
+}
+
+$nauczyciel_result = $stmt->get_result();
+
 if ($nauczyciel_result->num_rows === 0) {
+    $stmt->close();
     die("Błąd: Nie znaleziono danych nauczyciela");
 }
 
 $nauczyciel = $nauczyciel_result->fetch_assoc();
 $nauczyciel_id = $nauczyciel['id'];
 $nauczyciel_imie_nazwisko = $nauczyciel['imie'] . ' ' . $nauczyciel['nazwisko'];
+$stmt->close();
 
 // Pobierz tydzień
 $tydzien_offset = intval($_GET['tydzien'] ?? 0);
@@ -40,8 +57,8 @@ $piatek_docelowy->modify('+4 days');
 $poczatek_tygodnia = $poniedzialek_docelowy->format('Y-m-d');
 $koniec_tygodnia = $piatek_docelowy->format('Y-m-d');
 
-// Pobierz plan nauczyciela
-$plan_query = $conn->query("
+// Pobierz plan nauczyciela - używamy prepared statement
+$stmt_plan = $conn->prepare("
     SELECT pd.*, p.nazwa as przedmiot, p.skrot,
            k.nazwa as klasa, s.numer as sala,
            pd.czy_zastepstwo
@@ -49,11 +66,26 @@ $plan_query = $conn->query("
     JOIN przedmioty p ON pd.przedmiot_id = p.id
     JOIN klasy k ON pd.klasa_id = k.id
     LEFT JOIN sale s ON pd.sala_id = s.id
-    WHERE pd.nauczyciel_id = $nauczyciel_id
-    AND pd.data >= '$poczatek_tygodnia'
-    AND pd.data <= '$koniec_tygodnia'
+    WHERE pd.nauczyciel_id = ?
+    AND pd.data >= ?
+    AND pd.data <= ?
     ORDER BY pd.data, pd.numer_lekcji
 ");
+
+if (!$stmt_plan) {
+    error_log("Błąd przygotowania zapytania planu nauczyciela: " . $conn->error);
+    die("Błąd: Nie można pobrać planu nauczyciela");
+}
+
+$stmt_plan->bind_param("iss", $nauczyciel_id, $poczatek_tygodnia, $koniec_tygodnia);
+
+if (!$stmt_plan->execute()) {
+    error_log("Błąd wykonania zapytania planu nauczyciela: " . $stmt_plan->error);
+    $stmt_plan->close();
+    die("Błąd: Nie można pobrać planu nauczyciela");
+}
+
+$plan_query = $stmt_plan->get_result();
 
 $plan = [];
 $liczba_lekcji = 0;
