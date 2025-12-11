@@ -144,6 +144,21 @@ $dni_tygodnia = [
             transform: translateY(-2px);
         }
 
+        .btn-settings {
+            background: #6c757d;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        .btn-settings:hover {
+            background: #5a6268;
+            transform: translateY(-2px);
+        }
+
         .plan-card {
             background: white;
             border-radius: 15px;
@@ -341,7 +356,8 @@ $dni_tygodnia = [
                     <span class="class-badge">Klasa <?php echo e($klasa_nazwa); ?></span>
                 </h1>
                 <div class="user-info">
-                    <span>👤 <?php echo e($_SESSION['user_name']); ?></span>
+                    <span><?php echo e($_SESSION['user_name']); ?></span>
+                    <a href="zmiana_hasla.php" class="btn-settings">Zmiana hasła</a>
                     <a href="../logout.php" class="btn-logout">Wyloguj</a>
                 </div>
             </header>

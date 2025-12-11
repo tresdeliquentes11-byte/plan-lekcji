@@ -126,6 +126,16 @@ $current_page = basename($_SERVER['PHP_SELF']);
             </svg>
             <span>Sale</span>
         </a>
+
+        <div class="nav-separator">Konto</div>
+
+        <a href="zmiana_hasla.php" class="nav-item <?php echo ($current_page == 'zmiana_hasla.php') ? 'active' : ''; ?>">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+            </svg>
+            <span>Zmiana hasła</span>
+        </a>
     </nav>
 
     <div class="sidebar-footer">
