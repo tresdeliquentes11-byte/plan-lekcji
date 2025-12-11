@@ -6,20 +6,51 @@
  * Korzystając z kodu, akceptujesz warunki licencji (LICENSE.md).
  */
 function oblicz_czas_lekcji($numer_lekcji, $conn) {
+    // Walidacja numeru lekcji
+    if (!is_numeric($numer_lekcji) || $numer_lekcji < 1 || $numer_lekcji > 10) {
+        error_log("oblicz_czas_lekcji: Nieprawidłowy numer lekcji: " . $numer_lekcji);
+        return [
+            'start' => '08:00:00',
+            'koniec' => '08:45:00'
+        ];
+    }
+
     // Pobierz ustawienia
     $ustawienia = pobierz_ustawienia_czasu($conn);
+
+    if (!is_array($ustawienia) || !isset($ustawienia['godzina_rozpoczecia'], $ustawienia['dlugosc_lekcji'], $ustawienia['przerwy'])) {
+        error_log("oblicz_czas_lekcji: Nieprawidłowe ustawienia czasu");
+        return [
+            'start' => '08:00:00',
+            'koniec' => '08:45:00'
+        ];
+    }
 
     $godzina_start = $ustawienia['godzina_rozpoczecia'];
     $dlugosc_lekcji = $ustawienia['dlugosc_lekcji'];
     $przerwy = $ustawienia['przerwy'];
 
+    // Walidacja długości lekcji
+    if (!is_numeric($dlugosc_lekcji) || $dlugosc_lekcji <= 0) {
+        error_log("oblicz_czas_lekcji: Nieprawidłowa długość lekcji: " . $dlugosc_lekcji);
+        $dlugosc_lekcji = 45; // Wartość domyślna
+    }
+
     // Oblicz czas rozpoczęcia
     $start_timestamp = strtotime($godzina_start);
+
+    if ($start_timestamp === false) {
+        error_log("oblicz_czas_lekcji: Nie udało się sparsować godziny rozpoczęcia: " . $godzina_start);
+        return [
+            'start' => '08:00:00',
+            'koniec' => '08:45:00'
+        ];
+    }
 
     // Dodaj czas poprzednich lekcji i przerw
     for ($i = 1; $i < $numer_lekcji; $i++) {
         $start_timestamp += $dlugosc_lekcji * 60;
-        if (isset($przerwy[$i])) {
+        if (isset($przerwy[$i]) && is_numeric($przerwy[$i])) {
             $start_timestamp += $przerwy[$i] * 60;
         }
     }
@@ -41,6 +72,17 @@ function oblicz_czas_lekcji($numer_lekcji, $conn) {
 function pobierz_ustawienia_czasu($conn) {
     // Sprawdź czy tabela istnieje
     $check_table = $conn->query("SHOW TABLES LIKE 'ustawienia_planu'");
+
+    if (!$check_table) {
+        error_log("pobierz_ustawienia_czasu: Błąd sprawdzania istnienia tabeli: " . $conn->error);
+        // Wartości domyślne
+        return [
+            'godzina_rozpoczecia' => '08:00',
+            'dlugosc_lekcji' => 45,
+            'przerwy' => [1 => 10, 2 => 10, 3 => 15, 4 => 10, 5 => 10, 6 => 10, 7 => 10, 8 => 10, 9 => 10]
+        ];
+    }
+
     if ($check_table->num_rows == 0) {
         // Wartości domyślne
         return [
@@ -56,31 +98,60 @@ function pobierz_ustawienia_czasu($conn) {
 
     // Pobierz godzinę rozpoczęcia
     $result = $conn->query("SELECT wartosc FROM ustawienia_planu WHERE nazwa = 'godzina_rozpoczecia'");
-    if ($row = $result->fetch_assoc()) {
-        $godzina_rozpoczecia = $row['wartosc'];
+    if ($result && $row = $result->fetch_assoc()) {
+        $godzina_rozpoczecia = $row['wartosc'] ?? '08:00';
+    } elseif (!$result) {
+        error_log("pobierz_ustawienia_czasu: Błąd pobierania godziny rozpoczęcia: " . $conn->error);
     }
 
     // Pobierz długość lekcji
     $result = $conn->query("SELECT wartosc FROM ustawienia_planu WHERE nazwa = 'dlugosc_lekcji'");
-    if ($row = $result->fetch_assoc()) {
-        $dlugosc_lekcji = intval($row['wartosc']);
+    if ($result && $row = $result->fetch_assoc()) {
+        $wartosc = intval($row['wartosc'] ?? 45);
+        $dlugosc_lekcji = ($wartosc > 0) ? $wartosc : 45;
+    } elseif (!$result) {
+        error_log("pobierz_ustawienia_czasu: Błąd pobierania długości lekcji: " . $conn->error);
     }
 
     // Pobierz liczbę lekcji
     $result = $conn->query("SELECT wartosc FROM ustawienia_planu WHERE nazwa = 'liczba_lekcji'");
-    if ($row = $result->fetch_assoc()) {
-        $liczba_lekcji = intval($row['wartosc']);
+    if ($result && $row = $result->fetch_assoc()) {
+        $wartosc = intval($row['wartosc'] ?? 8);
+        $liczba_lekcji = ($wartosc > 0 && $wartosc <= 10) ? $wartosc : 8;
+    } elseif (!$result) {
+        error_log("pobierz_ustawienia_czasu: Błąd pobierania liczby lekcji: " . $conn->error);
     }
 
-    // Pobierz długości przerw
+    // Pobierz długości przerw - używamy prepared statement
     $przerwy = [];
-    for ($i = 1; $i < $liczba_lekcji; $i++) {
-        $result = $conn->query("SELECT wartosc FROM ustawienia_planu WHERE nazwa = 'przerwa_po_$i'");
-        if ($row = $result->fetch_assoc()) {
-            $przerwy[$i] = intval($row['wartosc']);
-        } else {
-            $przerwy[$i] = ($i == 3) ? 15 : 10; // Domyślne wartości
+    $stmt = $conn->prepare("SELECT wartosc FROM ustawienia_planu WHERE nazwa = ?");
+
+    if (!$stmt) {
+        error_log("pobierz_ustawienia_czasu: Błąd przygotowania zapytania dla przerw: " . $conn->error);
+        // Użyj wartości domyślnych
+        for ($i = 1; $i < $liczba_lekcji; $i++) {
+            $przerwy[$i] = ($i == 3) ? 15 : 10;
         }
+    } else {
+        for ($i = 1; $i < $liczba_lekcji; $i++) {
+            $nazwa_przerwy = "przerwa_po_$i";
+            $stmt->bind_param("s", $nazwa_przerwy);
+
+            if ($stmt->execute()) {
+                $result = $stmt->get_result();
+                if ($row = $result->fetch_assoc()) {
+                    $wartosc = intval($row['wartosc'] ?? 10);
+                    $przerwy[$i] = ($wartosc >= 0) ? $wartosc : 10;
+                } else {
+                    $przerwy[$i] = ($i == 3) ? 15 : 10; // Domyślne wartości
+                }
+            } else {
+                error_log("pobierz_ustawienia_czasu: Błąd pobierania przerwy $i: " . $stmt->error);
+                $przerwy[$i] = ($i == 3) ? 15 : 10; // Domyślne wartości
+            }
+        }
+
+        $stmt->close();
     }
 
     return [

@@ -11,14 +11,30 @@ class GeneratorZastepstw {
     
     // Sprawdzenie czy lekcja jest na początku lub końcu dnia dla klasy
     private function czyLekcjaNaPoczatkuLubKoncuDnia($klasa_id, $data, $numer_lekcji) {
-        // Pobierz wszystkie lekcje klasy w tym dniu
-        $lekcje_klasy = $this->conn->query("
+        // Pobierz wszystkie lekcje klasy w tym dniu - używamy prepared statement
+        $stmt = $this->conn->prepare("
             SELECT numer_lekcji
             FROM plan_dzienny
-            WHERE klasa_id = $klasa_id
-            AND data = '$data'
+            WHERE klasa_id = ?
+            AND data = ?
             ORDER BY numer_lekcji
         ");
+
+        if (!$stmt) {
+            error_log("czyLekcjaNaPoczatkuLubKoncuDnia: Błąd przygotowania zapytania: " . $this->conn->error);
+            return false;
+        }
+
+        $stmt->bind_param("is", $klasa_id, $data);
+
+        if (!$stmt->execute()) {
+            error_log("czyLekcjaNaPoczatkuLubKoncuDnia: Błąd wykonania zapytania: " . $stmt->error);
+            $stmt->close();
+            return false;
+        }
+
+        $lekcje_klasy = $stmt->get_result();
+        $stmt->close();
 
         if ($lekcje_klasy->num_rows == 0) {
             return false; // Brak lekcji w tym dniu
@@ -52,18 +68,34 @@ class GeneratorZastepstw {
         $data_od = $nieobecnosc['data_od'];
         $data_do = $nieobecnosc['data_do'];
 
-        // Pobieramy wszystkie lekcje nauczyciela w tym okresie
-        $lekcje = $this->conn->query("
+        // Pobieramy wszystkie lekcje nauczyciela w tym okresie - używamy prepared statement
+        $stmt_lekcje = $this->conn->prepare("
             SELECT pd.*, p.nazwa as przedmiot_nazwa, k.nazwa as klasa_nazwa
             FROM plan_dzienny pd
             JOIN przedmioty p ON pd.przedmiot_id = p.id
             JOIN klasy k ON pd.klasa_id = k.id
-            WHERE pd.nauczyciel_id = $nauczyciel_id
-            AND pd.data >= '$data_od'
-            AND pd.data <= '$data_do'
+            WHERE pd.nauczyciel_id = ?
+            AND pd.data >= ?
+            AND pd.data <= ?
             AND pd.czy_zastepstwo = 0
             ORDER BY pd.data, pd.numer_lekcji
         ");
+
+        if (!$stmt_lekcje) {
+            error_log("generujZastepstwa: Błąd przygotowania zapytania dla lekcji: " . $this->conn->error);
+            return false;
+        }
+
+        $stmt_lekcje->bind_param("iss", $nauczyciel_id, $data_od, $data_do);
+
+        if (!$stmt_lekcje->execute()) {
+            error_log("generujZastepstwa: Błąd wykonania zapytania dla lekcji: " . $stmt_lekcje->error);
+            $stmt_lekcje->close();
+            return false;
+        }
+
+        $lekcje = $stmt_lekcje->get_result();
+        $stmt_lekcje->close();
 
         $zastepstwa_utworzone = 0;
         $zastepstwa_niemozliwe = [];
@@ -97,14 +129,26 @@ class GeneratorZastepstw {
                     $nauczyciel_zastepujacy['id']
                 );
 
-                // Aktualizujemy plan dzienny
-                $this->conn->query("
+                // Aktualizujemy plan dzienny - używamy prepared statement
+                $stmt_update = $this->conn->prepare("
                     UPDATE plan_dzienny
                     SET czy_zastepstwo = 1,
-                        oryginalny_nauczyciel_id = $nauczyciel_id,
-                        nauczyciel_id = {$nauczyciel_zastepujacy['id']}
-                    WHERE id = {$lekcja['id']}
+                        oryginalny_nauczyciel_id = ?,
+                        nauczyciel_id = ?
+                    WHERE id = ?
                 ");
+
+                if ($stmt_update) {
+                    $stmt_update->bind_param("iii", $nauczyciel_id, $nauczyciel_zastepujacy['id'], $lekcja['id']);
+
+                    if (!$stmt_update->execute()) {
+                        error_log("generujZastepstwa: Błąd aktualizacji planu dziennego: " . $stmt_update->error);
+                    }
+
+                    $stmt_update->close();
+                } else {
+                    error_log("generujZastepstwa: Błąd przygotowania zapytania aktualizacji: " . $this->conn->error);
+                }
 
                 $zastepstwa_utworzone++;
             } else {
@@ -157,27 +201,44 @@ class GeneratorZastepstw {
         ];
         $dzien_nazwa = $dni_mapping[$dzien_tygodnia_nr] ?? null;
 
-        $result = $this->conn->query("
+        // Używamy prepared statement
+        $stmt = $this->conn->prepare("
             SELECT n.id, u.imie, u.nazwisko
             FROM nauczyciele n
             JOIN uzytkownicy u ON n.uzytkownik_id = u.id
             JOIN nauczyciel_przedmioty np ON n.id = np.nauczyciel_id
-            WHERE np.przedmiot_id = $przedmiot_id
-            AND n.id != $nieobecny_nauczyciel_id
+            WHERE np.przedmiot_id = ?
+            AND n.id != ?
             AND n.id NOT IN (
                 -- Nauczyciele zajęci w tym czasie
                 SELECT nauczyciel_id
                 FROM plan_dzienny
-                WHERE data = '$data'
-                AND numer_lekcji = $numer_lekcji
+                WHERE data = ?
+                AND numer_lekcji = ?
             )
             AND n.id NOT IN (
                 -- Nauczyciele nieobecni
                 SELECT nauczyciel_id
                 FROM nieobecnosci
-                WHERE '$data' BETWEEN data_od AND data_do
+                WHERE ? BETWEEN data_od AND data_do
             )
         ");
+
+        if (!$stmt) {
+            error_log("znajdzNauczycielaZastepujacego: Błąd przygotowania zapytania: " . $this->conn->error);
+            return null;
+        }
+
+        $stmt->bind_param("iisis", $przedmiot_id, $nieobecny_nauczyciel_id, $data, $numer_lekcji, $data);
+
+        if (!$stmt->execute()) {
+            error_log("znajdzNauczycielaZastepujacego: Błąd wykonania zapytania: " . $stmt->error);
+            $stmt->close();
+            return null;
+        }
+
+        $result = $stmt->get_result();
+        $stmt->close();
 
         // Sprawdź każdego kandydata pod kątem dostępności w godzinach
         while ($nauczyciel = $result->fetch_assoc()) {
@@ -218,29 +279,46 @@ class GeneratorZastepstw {
         // 4. Nie są nieobecni
         // 5. Są dostępni w tych godzinach
 
-        $result = $this->conn->query("
+        // Używamy prepared statement
+        $stmt = $this->conn->prepare("
             SELECT DISTINCT n.id, u.imie, u.nazwisko, p.nazwa as przedmiot_nazwa
             FROM nauczyciele n
             JOIN uzytkownicy u ON n.uzytkownik_id = u.id
             JOIN klasa_przedmioty kp ON n.id = kp.nauczyciel_id
             JOIN przedmioty p ON kp.przedmiot_id = p.id
-            WHERE kp.klasa_id = $klasa_id
-            AND kp.przedmiot_id != $oryginalny_przedmiot_id
-            AND n.id != $nieobecny_nauczyciel_id
+            WHERE kp.klasa_id = ?
+            AND kp.przedmiot_id != ?
+            AND n.id != ?
             AND n.id NOT IN (
                 -- Nauczyciele zajęci w tym czasie
                 SELECT nauczyciel_id
                 FROM plan_dzienny
-                WHERE data = '$data'
-                AND numer_lekcji = $numer_lekcji
+                WHERE data = ?
+                AND numer_lekcji = ?
             )
             AND n.id NOT IN (
                 -- Nauczyciele nieobecni
                 SELECT nauczyciel_id
                 FROM nieobecnosci
-                WHERE '$data' BETWEEN data_od AND data_do
+                WHERE ? BETWEEN data_od AND data_do
             )
         ");
+
+        if (!$stmt) {
+            error_log("znajdzNauczycielaInnegoPremiotu: Błąd przygotowania zapytania: " . $this->conn->error);
+            return null;
+        }
+
+        $stmt->bind_param("iiiisi", $klasa_id, $oryginalny_przedmiot_id, $nieobecny_nauczyciel_id, $data, $numer_lekcji, $data);
+
+        if (!$stmt->execute()) {
+            error_log("znajdzNauczycielaInnegoPremiotu: Błąd wykonania zapytania: " . $stmt->error);
+            $stmt->close();
+            return null;
+        }
+
+        $result = $stmt->get_result();
+        $stmt->close();
 
         // Sprawdź każdego kandydata pod kątem dostępności w godzinach
         while ($nauczyciel = $result->fetch_assoc()) {
@@ -272,26 +350,69 @@ class GeneratorZastepstw {
     
     // Usuwanie zastępstw dla nieobecności
     public function usunZastepstwa($nieobecnosc_id) {
-        // Pobieramy wszystkie zastępstwa
-        $zastepstwa = $this->conn->query("
-            SELECT * FROM zastepstwa WHERE nieobecnosc_id = $nieobecnosc_id
+        // Pobieramy wszystkie zastępstwa - używamy prepared statement
+        $stmt = $this->conn->prepare("
+            SELECT * FROM zastepstwa WHERE nieobecnosc_id = ?
         ");
-        
+
+        if (!$stmt) {
+            error_log("usunZastepstwa: Błąd przygotowania zapytania pobierania zastępstw: " . $this->conn->error);
+            return false;
+        }
+
+        $stmt->bind_param("i", $nieobecnosc_id);
+
+        if (!$stmt->execute()) {
+            error_log("usunZastepstwa: Błąd wykonania zapytania pobierania zastępstw: " . $stmt->error);
+            $stmt->close();
+            return false;
+        }
+
+        $zastepstwa = $stmt->get_result();
+        $stmt->close();
+
         while ($zastepstwo = $zastepstwa->fetch_assoc()) {
-            // Przywracamy oryginalnego nauczyciela
-            $this->conn->query("
+            // Przywracamy oryginalnego nauczyciela - używamy prepared statement
+            $stmt_update = $this->conn->prepare("
                 UPDATE plan_dzienny pd
                 JOIN zastepstwa z ON pd.id = z.plan_dzienny_id
                 SET pd.nauczyciel_id = pd.oryginalny_nauczyciel_id,
                     pd.czy_zastepstwo = 0,
                     pd.oryginalny_nauczyciel_id = NULL
-                WHERE z.id = {$zastepstwo['id']}
+                WHERE z.id = ?
             ");
+
+            if ($stmt_update) {
+                $stmt_update->bind_param("i", $zastepstwo['id']);
+
+                if (!$stmt_update->execute()) {
+                    error_log("usunZastepstwa: Błąd przywracania oryginalnego nauczyciela dla zastępstwa ID " . $zastepstwo['id'] . ": " . $stmt_update->error);
+                }
+
+                $stmt_update->close();
+            } else {
+                error_log("usunZastepstwa: Błąd przygotowania zapytania aktualizacji: " . $this->conn->error);
+            }
         }
-        
-        // Usuwamy zastępstwa
-        $this->conn->query("DELETE FROM zastepstwa WHERE nieobecnosc_id = $nieobecnosc_id");
-        
+
+        // Usuwamy zastępstwa - używamy prepared statement
+        $stmt_delete = $this->conn->prepare("DELETE FROM zastepstwa WHERE nieobecnosc_id = ?");
+
+        if (!$stmt_delete) {
+            error_log("usunZastepstwa: Błąd przygotowania zapytania usuwania: " . $this->conn->error);
+            return false;
+        }
+
+        $stmt_delete->bind_param("i", $nieobecnosc_id);
+
+        if (!$stmt_delete->execute()) {
+            error_log("usunZastepstwa: Błąd usuwania zastępstw: " . $stmt_delete->error);
+            $stmt_delete->close();
+            return false;
+        }
+
+        $stmt_delete->close();
+
         return true;
     }
 }
