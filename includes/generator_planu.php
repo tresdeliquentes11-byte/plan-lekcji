@@ -20,6 +20,7 @@ class GeneratorPlanu {
     private $daily_count = [];          // [class_id][day] => count
     private $validation_errors = [];
     private $unassigned_slots = [];     // Lista nieprzypisanych slotów
+    private $family_cache = [];         // Cache dla getFamilyId() - [przedmiot_id] => family_id
 
     public function __construct($conn) {
         $this->conn = $conn;
@@ -194,6 +195,7 @@ class GeneratorPlanu {
         $this->teacher_schedule = [];
         $this->occurrences = [];
         $this->daily_count = [];
+        $this->family_cache = []; // Reset cache przy ładowaniu nowych danych
 
         // Załaduj klasy i ich przedmioty
         $klasy_result = $this->conn->query("SELECT * FROM klasy ORDER BY nazwa");
@@ -474,6 +476,11 @@ class GeneratorPlanu {
 
 
     private function getFamilyId($przedmiot_id, $klasa_id) {
+        // OPTYMALIZACJA: Sprawdź cache
+        if (isset($this->family_cache[$przedmiot_id])) {
+            return $this->family_cache[$przedmiot_id];
+        }
+
         // Sprawdź czy to przedmiot rozszerzony - używamy prepared statement
         $stmt = $this->conn->prepare("
             SELECT p.nazwa, p.czy_rozszerzony
@@ -483,7 +490,9 @@ class GeneratorPlanu {
 
         if (!$stmt) {
             error_log("Błąd przygotowania zapytania getFamilyId: " . $this->conn->error);
-            return 'subject_' . $przedmiot_id;
+            $family_id = 'subject_' . $przedmiot_id;
+            $this->family_cache[$przedmiot_id] = $family_id;
+            return $family_id;
         }
 
         $stmt->bind_param("i", $przedmiot_id);
@@ -491,29 +500,31 @@ class GeneratorPlanu {
         if (!$stmt->execute()) {
             error_log("Błąd wykonania zapytania getFamilyId dla przedmiotu ID $przedmiot_id: " . $stmt->error);
             $stmt->close();
-            return 'subject_' . $przedmiot_id;
+            $family_id = 'subject_' . $przedmiot_id;
+            $this->family_cache[$przedmiot_id] = $family_id;
+            return $family_id;
         }
 
         $result = $stmt->get_result();
+        $family_id = 'subject_' . $przedmiot_id; // Domyślna wartość
 
         if ($result && $row = $result->fetch_assoc()) {
             $nazwa = $row['nazwa'] ?? '';
             $czy_rozszerzony = $row['czy_rozszerzony'] ?? 0;
 
-            $stmt->close();
-
             // Jeśli rozszerzony, usuń "rozszerzony/rozszerzona/rozszerzone" z nazwy
             if ($czy_rozszerzony) {
                 $base_name = preg_replace('/(rozszerzony|rozszerzona|rozszerzone)/i', '', $nazwa);
                 $base_name = trim($base_name);
-                return 'family_' . md5($base_name);
+                $family_id = 'family_' . md5($base_name);
             }
-        } else {
-            $stmt->close();
         }
 
-        // Domyślnie zwróć ID przedmiotu
-        return 'subject_' . $przedmiot_id;
+        $stmt->close();
+
+        // Zapisz do cache
+        $this->family_cache[$przedmiot_id] = $family_id;
+        return $family_id;
     }
 
 
@@ -929,6 +940,7 @@ class GeneratorPlanu {
             );
 
             $stmt->execute();
+            $stmt->close();
 
             // Commit
             $this->conn->commit();

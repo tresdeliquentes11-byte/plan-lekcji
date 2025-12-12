@@ -125,6 +125,7 @@ $nieobecnosci = $conn->query("
                 </div>
             </div>
         </div>
+        </div>
     </div>
 </body>
 </html>

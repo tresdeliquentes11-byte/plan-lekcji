@@ -574,14 +574,27 @@ class PlanEdytor {
         }
     }
 
+    // Funkcja pomocnicza do escapowania HTML - zabezpieczenie przed XSS
+    escapeHtml(text) {
+        if (text === null || text === undefined) return '';
+        const div = document.createElement('div');
+        div.textContent = String(text);
+        return div.innerHTML;
+    }
+
     pokazKonflikty(konflikty) {
         let html = '<div class="alert alert-warning"><strong>Wykryte konflikty:</strong><div class="conflicts-list">';
 
         konflikty.forEach(konflikt => {
+            // Zabezpieczenie przed XSS - escapowanie danych
+            const typEscaped = this.escapeHtml(konflikt.typ);
+            const opisEscaped = this.escapeHtml(konflikt.opis);
+            const tlumaczenie = this.escapeHtml(this.tlumaczTypKonfliktu(konflikt.typ));
+
             html += `
-                <div class="conflict-item conflict-${konflikt.typ}">
-                    <strong>${this.tlumaczTypKonfliktu(konflikt.typ)}</strong>
-                    <p>${konflikt.opis}</p>
+                <div class="conflict-item conflict-${typEscaped}">
+                    <strong>${tlumaczenie}</strong>
+                    <p>${opisEscaped}</p>
                 </div>
             `;
         });
@@ -595,10 +608,15 @@ class PlanEdytor {
         let html = '<div class="alert alert-warning"><strong>Wykryte konflikty:</strong><div class="conflicts-list">';
 
         konflikty.forEach(konflikt => {
+            // Zabezpieczenie przed XSS - escapowanie danych
+            const typEscaped = this.escapeHtml(konflikt.typ);
+            const opisEscaped = this.escapeHtml(konflikt.opis);
+            const tlumaczenie = this.escapeHtml(this.tlumaczTypKonfliktu(konflikt.typ));
+
             html += `
-                <div class="conflict-item conflict-${konflikt.typ}">
-                    <strong>${this.tlumaczTypKonfliktu(konflikt.typ)}</strong>
-                    <p>${konflikt.opis}</p>
+                <div class="conflict-item conflict-${typEscaped}">
+                    <strong>${tlumaczenie}</strong>
+                    <p>${opisEscaped}</p>
                 </div>
             `;
         });

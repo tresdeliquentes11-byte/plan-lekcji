@@ -439,7 +439,8 @@ if (isset($_GET['edytuj'])) {
                                         </a>
                                         <form method="POST" style="display: inline;" onsubmit="return confirm('Czy na pewno usunąć tę salę?')">
                                             <?php echo csrf_field(); ?>
-                                            <input type="hidden" name="usun_sale" value="<?php echo $s['id']; ?>">
+                                            <input type="hidden" name="sala_id" value="<?php echo $s['id']; ?>">
+                                            <input type="hidden" name="usun_sale" value="1">
                                             <button type="submit" class="btn btn-danger" style="padding: 5px 10px; font-size: 12px;">
                                                 Usuń
                                             </button>

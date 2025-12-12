@@ -68,6 +68,29 @@ function wyczysc_nieaktywne_sesje() {
     $conn->query("UPDATE sesje_uzytkownikow SET aktywna = 0 WHERE ostatnia_aktywnosc < DATE_SUB(NOW(), INTERVAL 30 MINUTE) AND aktywna = 1");
 }
 
+/**
+ * Dezaktywuje wszystkie sesje użytkownika (wymusza wylogowanie)
+ * Funkcja pomocnicza używana przy blokowaniu użytkownika lub zmianie hasła
+ *
+ * @param int $uzytkownik_id ID użytkownika do wylogowania
+ * @return bool True jeśli operacja się powiodła
+ */
+function wyloguj_uzytkownika($uzytkownik_id) {
+    global $conn;
+
+    $stmt = $conn->prepare("UPDATE sesje_uzytkownikow SET aktywna = 0 WHERE uzytkownik_id = ?");
+    if (!$stmt) {
+        error_log("wyloguj_uzytkownika: Błąd przygotowania zapytania: " . $conn->error);
+        return false;
+    }
+
+    $stmt->bind_param("i", $uzytkownik_id);
+    $result = $stmt->execute();
+    $stmt->close();
+
+    return $result;
+}
+
 // ============================================
 // FUNKCJE ZARZĄDZANIA UŻYTKOWNIKAMI
 // ============================================
@@ -242,14 +265,9 @@ function aktualizuj_uzytkownika($id, $dane) {
     if ($stmt->execute()) {
         $stmt->close();
 
-        // Jeśli zmieniono status aktywności, wyloguj użytkownika - używamy prepared statement
+        // Jeśli zmieniono status aktywności na nieaktywny, wyloguj użytkownika
         if (isset($dane['aktywny']) && $dane['aktywny'] == 0) {
-            $stmt_logout = $conn->prepare("UPDATE sesje_uzytkownikow SET aktywna = 0 WHERE uzytkownik_id = ?");
-            if ($stmt_logout) {
-                $stmt_logout->bind_param("i", $id);
-                $stmt_logout->execute();
-                $stmt_logout->close();
-            }
+            wyloguj_uzytkownika($id);
         }
 
         // Loguj aktywność
@@ -315,14 +333,9 @@ function zmien_status_uzytkownika($id, $aktywny) {
     if ($stmt->execute()) {
         $stmt->close();
 
-        // Jeśli blokujemy, wyloguj użytkownika - używamy prepared statement
+        // Jeśli blokujemy, wyloguj użytkownika
         if ($aktywny == 0) {
-            $stmt_logout = $conn->prepare("UPDATE sesje_uzytkownikow SET aktywna = 0 WHERE uzytkownik_id = ?");
-            if ($stmt_logout) {
-                $stmt_logout->bind_param("i", $id);
-                $stmt_logout->execute();
-                $stmt_logout->close();
-            }
+            wyloguj_uzytkownika($id);
         }
 
         $akcja = $aktywny ? 'odblokowanie' : 'blokada';

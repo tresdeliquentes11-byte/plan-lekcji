@@ -194,7 +194,7 @@ function pobierz_poczatek_tygodnia($data) {
     return date('Y-m-d', $poczatek);
 }
 
-// Funkcja do pobierania końca tygodnia
+// Funkcja do pobierania końca tygodnia (piątek)
 function pobierz_koniec_tygodnia($data) {
     if (empty($data)) {
         error_log("pobierz_koniec_tygodnia: Przekazano pustą datę");
@@ -208,10 +208,20 @@ function pobierz_koniec_tygodnia($data) {
         $timestamp = time(); // Użyj bieżącego czasu jako fallback
     }
 
-    $dzien_tygodnia = date('N', $timestamp);
-    $dni_do_piatku = 5 - $dzien_tygodnia;
+    $dzien_tygodnia = date('N', $timestamp); // 1=Poniedziałek, 7=Niedziela
 
-    $koniec = strtotime("+$dni_do_piatku days", $timestamp);
+    // NAPRAWA: Obsługa weekendów (sobota=6, niedziela=7)
+    // Dla weekendów zwracamy piątek TEGO samego tygodnia kalendarzowego
+    if ($dzien_tygodnia >= 6) {
+        // Sobota (6) -> cofnij o 1 dzień do piątku
+        // Niedziela (7) -> cofnij o 2 dni do piątku
+        $dni_wstecz = $dzien_tygodnia - 5;
+        $koniec = strtotime("-$dni_wstecz days", $timestamp);
+    } else {
+        // Poniedziałek-Piątek: oblicz normalnie
+        $dni_do_piatku = 5 - $dzien_tygodnia;
+        $koniec = strtotime("+$dni_do_piatku days", $timestamp);
+    }
 
     if ($koniec === false) {
         error_log("pobierz_koniec_tygodnia: Błąd obliczania końca tygodnia");
