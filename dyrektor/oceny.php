@@ -14,25 +14,38 @@ $stats = [];
 
 // Średnie dla wszystkich klas
 $srednie_klas = [];
-$result = $conn->query("
-    SELECT k.id, k.nazwa,
-           (SELECT AVG(srednia) FROM (
-               SELECT uc.id, SUM(o.ocena * ko.waga) / SUM(ko.waga) as srednia
-               FROM uczniowie uc
-               JOIN oceny o ON uc.id = o.uczen_id
-               JOIN kategorie_ocen ko ON o.kategoria_id = ko.id
-               WHERE uc.klasa_id = k.id AND o.czy_poprawiona = 0
-               GROUP BY uc.id
-           ) as s) as srednia_klasy,
-           (SELECT COUNT(DISTINCT o.id) FROM oceny o 
-            JOIN uczniowie uc ON o.uczen_id = uc.id 
-            WHERE uc.klasa_id = k.id) as liczba_ocen
-    FROM klasy k
-    ORDER BY k.nazwa
-");
+$klasy_result = $conn->query("SELECT id, nazwa FROM klasy ORDER BY nazwa");
 
-while ($row = $result->fetch_assoc()) {
-    $srednie_klas[] = $row;
+while ($klasa = $klasy_result->fetch_assoc()) {
+    $klasa_id = $klasa['id'];
+
+    // Oblicz średnią klasy
+    $srednia_result = $conn->query("
+        SELECT AVG(srednia) as srednia_klasy FROM (
+            SELECT uc.id, SUM(o.ocena * ko.waga) / SUM(ko.waga) as srednia
+            FROM uczniowie uc
+            JOIN oceny o ON uc.id = o.uczen_id
+            JOIN kategorie_ocen ko ON o.kategoria_id = ko.id
+            WHERE uc.klasa_id = $klasa_id AND o.czy_poprawiona = 0
+            GROUP BY uc.id
+        ) as s
+    ");
+    $srednia = $srednia_result->fetch_assoc()['srednia_klasy'];
+
+    // Policz oceny
+    $liczba_result = $conn->query("
+        SELECT COUNT(DISTINCT o.id) as liczba FROM oceny o 
+        JOIN uczniowie uc ON o.uczen_id = uc.id 
+        WHERE uc.klasa_id = $klasa_id
+    ");
+    $liczba = $liczba_result->fetch_assoc()['liczba'];
+
+    $srednie_klas[] = [
+        'id' => $klasa['id'],
+        'nazwa' => $klasa['nazwa'],
+        'srednia_klasy' => $srednia,
+        'liczba_ocen' => $liczba
+    ];
 }
 
 // Najlepsza i najsłabsza klasa
