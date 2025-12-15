@@ -20,7 +20,8 @@ $current_page = basename($_SERVER['PHP_SELF']);
 
         <div class="nav-separator">Zarządzanie Planem</div>
 
-        <a href="plan_generuj.php" class="nav-item <?php echo ($current_page == 'plan_generuj.php') ? 'active' : ''; ?>">
+        <a href="plan_generuj.php"
+            class="nav-item <?php echo ($current_page == 'plan_generuj.php') ? 'active' : ''; ?>">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                 <polyline points="14 2 14 8 20 8"></polyline>
@@ -30,7 +31,8 @@ $current_page = basename($_SERVER['PHP_SELF']);
             <span>Generuj Plan</span>
         </a>
 
-        <a href="plan_edycja_ui.php" class="nav-item <?php echo ($current_page == 'plan_edycja_ui.php') ? 'active' : ''; ?>">
+        <a href="plan_edycja_ui.php"
+            class="nav-item <?php echo ($current_page == 'plan_edycja_ui.php') ? 'active' : ''; ?>">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
                 <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
@@ -38,7 +40,8 @@ $current_page = basename($_SERVER['PHP_SELF']);
             <span>Edycja Planu</span>
         </a>
 
-        <a href="plan_podglad.php" class="nav-item <?php echo ($current_page == 'plan_podglad.php') ? 'active' : ''; ?>">
+        <a href="plan_podglad.php"
+            class="nav-item <?php echo ($current_page == 'plan_podglad.php') ? 'active' : ''; ?>">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
                 <circle cx="12" cy="12" r="3"></circle>
@@ -127,9 +130,36 @@ $current_page = basename($_SERVER['PHP_SELF']);
             <span>Sale</span>
         </a>
 
+        <div class="nav-separator">System Szkolny</div>
+
+        <a href="oceny.php" class="nav-item <?php echo ($current_page == 'oceny.php') ? 'active' : ''; ?>">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 10v6M2 10l10-5 10 5-10 5z"></path>
+                <path d="M6 12v5c3 3 9 3 12 0v-5"></path>
+            </svg>
+            <span>Statystyki Ocen</span>
+        </a>
+
+        <?php
+        require_once dirname(__DIR__) . '/../includes/wiadomosci_functions.php';
+        $nieprzeczytane_wiad = liczba_nieprzeczytanych($conn, $_SESSION['user_id']);
+        ?>
+        <a href="wiadomosci.php" class="nav-item <?php echo ($current_page == 'wiadomosci.php') ? 'active' : ''; ?>">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                <polyline points="22,6 12,13 2,6"></polyline>
+            </svg>
+            <span>Wiadomości</span>
+            <?php if ($nieprzeczytane_wiad > 0): ?>
+                <span
+                    style="background: #dc3545; color: white; font-size: 11px; padding: 2px 6px; border-radius: 10px; margin-left: 5px;"><?php echo $nieprzeczytane_wiad; ?></span>
+            <?php endif; ?>
+        </a>
+
         <div class="nav-separator">Konto</div>
 
-        <a href="zmiana_hasla.php" class="nav-item <?php echo ($current_page == 'zmiana_hasla.php') ? 'active' : ''; ?>">
+        <a href="zmiana_hasla.php"
+            class="nav-item <?php echo ($current_page == 'zmiana_hasla.php') ? 'active' : ''; ?>">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
                 <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
