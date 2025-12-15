@@ -50,6 +50,8 @@ $kategorie = pobierz_kategorie_ocen($conn);
 // Obsługa dodawania oceny
 $message = '';
 $error = '';
+
+// Dodawanie zwykłej oceny
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['dodaj_ocene'])) {
     if (!verify_csrf_token($_POST['csrf_token'] ?? '')) {
         $error = 'Błąd weryfikacji tokenu CSRF';
@@ -60,15 +62,83 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['dodaj_ocene'])) {
         $ocena_text = $_POST['ocena'];
         $komentarz = trim($_POST['komentarz'] ?? '');
 
-        $ocena = parsuj_ocene($ocena_text);
-
-        if ($ocena === null) {
-            $error = 'Nieprawidłowy format oceny. Użyj: 1, 2, 3, 4, 5, 6 lub z +/- (np. 4+, 5-)';
-        } else {
-            if (dodaj_ocene($conn, $uczen_id, $przedmiot_id, $nauczyciel_id, $kategoria_id, $ocena, $komentarz)) {
-                $message = 'Ocena została dodana pomyślnie';
+        // Obsługa niestandardowej kategorii
+        if ($kategoria_id == 0 && !empty($_POST['custom_kategoria_nazwa']) && !empty($_POST['custom_kategoria_waga'])) {
+            $custom_nazwa = trim($_POST['custom_kategoria_nazwa']);
+            $custom_waga = floatval($_POST['custom_kategoria_waga']);
+            if ($custom_waga > 0 && $custom_waga <= 5) {
+                $kategoria_id = dodaj_kategorie_niestandardowa($conn, $custom_nazwa, $custom_waga);
+                $kategorie = pobierz_kategorie_ocen($conn); // odśwież listę
             } else {
-                $error = 'Wystąpił błąd podczas dodawania oceny';
+                $error = 'Waga musi być między 0.1 a 5.0';
+            }
+        }
+
+        if (!$error) {
+            $ocena = parsuj_ocene($ocena_text);
+            if ($ocena === null) {
+                $error = 'Nieprawidłowy format oceny. Użyj: 1, 2, 3, 4, 5, 6 lub z +/- (np. 4+, 5-)';
+            } else {
+                if (dodaj_ocene($conn, $uczen_id, $przedmiot_id, $nauczyciel_id, $kategoria_id, $ocena, $komentarz)) {
+                    $message = 'Ocena została dodana pomyślnie';
+                } else {
+                    $error = 'Wystąpił błąd podczas dodawania oceny';
+                }
+            }
+        }
+    }
+}
+
+// Edycja oceny
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edytuj_ocene'])) {
+    if (!verify_csrf_token($_POST['csrf_token'] ?? '')) {
+        $error = 'Błąd weryfikacji tokenu CSRF';
+    } else {
+        $ocena_id = intval($_POST['ocena_id']);
+        $kategoria_id = intval($_POST['kategoria_id']);
+        $ocena_text = $_POST['ocena'];
+        $komentarz = trim($_POST['komentarz'] ?? '');
+
+        $ocena = parsuj_ocene($ocena_text);
+        if ($ocena === null) {
+            $error = 'Nieprawidłowy format oceny';
+        } else {
+            if (edytuj_ocene($conn, $ocena_id, $ocena, $kategoria_id, $komentarz)) {
+                $message = 'Ocena została zaktualizowana';
+            } else {
+                $error = 'Błąd podczas edycji oceny';
+            }
+        }
+    }
+}
+
+// Usuwanie oceny
+if (isset($_GET['usun_ocene'])) {
+    $ocena_id = intval($_GET['usun_ocene']);
+    if (usun_ocene($conn, $ocena_id, $nauczyciel_id)) {
+        $message = 'Ocena została usunięta';
+    } else {
+        $error = 'Nie można usunąć tej oceny (brak uprawnień lub ocena nie istnieje)';
+    }
+}
+
+// Poprawianie oceny
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['popraw_ocene'])) {
+    if (!verify_csrf_token($_POST['csrf_token'] ?? '')) {
+        $error = 'Błąd weryfikacji tokenu CSRF';
+    } else {
+        $stara_ocena_id = intval($_POST['stara_ocena_id']);
+        $nowa_ocena_text = $_POST['nowa_ocena'];
+        $komentarz = trim($_POST['komentarz'] ?? 'Poprawka');
+
+        $nowa_ocena = parsuj_ocene($nowa_ocena_text);
+        if ($nowa_ocena === null) {
+            $error = 'Nieprawidłowy format oceny poprawkowej';
+        } else {
+            if (popraw_ocene($conn, $stara_ocena_id, $nowa_ocena, $nauczyciel_id, $komentarz)) {
+                $message = 'Ocena poprawkowa została dodana';
+            } else {
+                $error = 'Błąd podczas dodawania poprawki';
             }
         }
     }
@@ -490,13 +560,24 @@ if ($wybrana_klasa_id && $wybrany_przedmiot_id) {
                                     <td>
                                         <div class="oceny-lista">
                                             <?php foreach ($oceny_ucznia as $o): ?>
-                                                <?php if (!$o['czy_poprawiona']): ?>
-                                                    <span class="ocena-badge"
-                                                        style="background: <?php echo kolor_oceny($o['ocena']); ?>;"
-                                                        title="<?php echo e($o['kategoria'] . ' - ' . formatuj_date($o['data_wystawienia'])); ?>">
-                                                        <?php echo formatuj_ocene($o['ocena']); ?>
-                                                    </span>
-                                                <?php endif; ?>
+                                                <?php
+                                                $is_poprawka = $o['poprawia_ocene_id'] !== null;
+                                                $opacity = $o['czy_poprawiona'] ? '0.5' : '1';
+                                                $komentarz_safe = htmlspecialchars($o['komentarz'] ?? '', ENT_QUOTES);
+                                                ?>
+                                                <span class="ocena-badge ocena-clickable"
+                                                    style="background: <?php echo kolor_oceny($o['ocena']); ?>; opacity: <?php echo $opacity; ?>"
+                                                    title="<?php echo e($o['kategoria'] . ' - ' . formatuj_date($o['data_wystawienia'])); ?>"
+                                                    data-id="<?php echo $o['id']; ?>"
+                                                    data-ocena="<?php echo $o['ocena']; ?>"
+                                                    data-kategoria="<?php echo $o['kategoria_id']; ?>"
+                                                    data-komentarz="<?php echo $komentarz_safe; ?>"
+                                                    data-poprawiona="<?php echo $o['czy_poprawiona'] ? '1' : '0'; ?>"
+                                                    data-uczen="<?php echo $uczen['uczen_id']; ?>">
+                                                    <?php if ($is_poprawka): ?><span style="font-size:10px">★</span><?php endif; ?>
+                                                    <?php echo formatuj_ocene($o['ocena']); ?>
+                                                    <?php if ($o['czy_poprawiona']): ?><span style="font-size:9px">✗</span><?php endif; ?>
+                                                </span>
                                             <?php endforeach; ?>
                                         </div>
                                     </td>
@@ -533,7 +614,7 @@ if ($wybrana_klasa_id && $wybrany_przedmiot_id) {
         <div class="modal-content">
             <div class="modal-header">
                 <h3 class="modal-title">Dodaj ocenę</h3>
-                <button class="modal-close" onclick="closeModal()">&times;</button>
+                <button class="modal-close" onclick="closeModal('gradeModal')">&times;</button>
             </div>
             <form method="post">
                 <?php echo csrf_field(); ?>
@@ -548,23 +629,33 @@ if ($wybrana_klasa_id && $wybrany_przedmiot_id) {
 
                 <div class="form-group">
                     <label>Kategoria oceny</label>
-                    <select name="kategoria_id" required>
+                    <select name="kategoria_id" id="add_kategoria" onchange="toggleCustomCategory(this)">
                         <?php foreach ($kategorie as $kat): ?>
                             <option value="<?php echo $kat['id']; ?>">
                                 <?php echo e($kat['nazwa']); ?> (waga: <?php echo $kat['waga']; ?>)
                             </option>
                         <?php endforeach; ?>
+                        <option value="0">➕ Niestandardowa kategoria...</option>
                     </select>
+                </div>
+
+                <div class="form-group" id="customCategoryGroup"
+                    style="display:none; background:#f8f9fa; padding:15px; border-radius:8px;">
+                    <label>Nazwa kategorii</label>
+                    <input type="text" name="custom_kategoria_nazwa" placeholder="np. Konkurs, Referat">
+                    <label style="margin-top:10px;">Waga (0.1-5.0)</label>
+                    <input type="number" name="custom_kategoria_waga" step="0.1" min="0.1" max="5"
+                        placeholder="np. 2.0">
                 </div>
 
                 <div class="form-group">
                     <label>Ocena (np. 4, 4+, 5-)</label>
-                    <input type="text" name="ocena" required placeholder="np. 4, 4+, 5-" pattern="[1-6][\+\-]?">
+                    <input type="text" name="ocena" required placeholder="np. 4, 4+, 5-">
                 </div>
 
                 <div class="form-group">
                     <label>Komentarz (opcjonalnie)</label>
-                    <textarea name="komentarz" rows="3" placeholder="Np. temat sprawdzianu, uwagi..."></textarea>
+                    <textarea name="komentarz" rows="2" placeholder="Np. temat sprawdzianu, uwagi..."></textarea>
                 </div>
 
                 <button type="submit" class="btn btn-primary btn-full">Zapisz ocenę</button>
@@ -572,20 +663,178 @@ if ($wybrana_klasa_id && $wybrany_przedmiot_id) {
         </div>
     </div>
 
+    <!-- Modal akcji na ocenie -->
+    <div class="modal" id="actionsModal">
+        <div class="modal-content" style="max-width:400px;">
+            <div class="modal-header">
+                <h3 class="modal-title">Akcje dla oceny</h3>
+                <button class="modal-close" onclick="closeModal('actionsModal')">&times;</button>
+            </div>
+            <p id="action_info" style="margin-bottom:20px;"></p>
+            <div style="display:flex; flex-direction:column; gap:10px;">
+                <button class="btn btn-secondary" onclick="openEditModal()" id="btn_edit">✏️ Edytuj ocenę</button>
+                <button class="btn btn-primary" onclick="openCorrectionModal()" id="btn_correct">📝 Wstaw
+                    poprawkę</button>
+                <a href="#" id="btn_delete" class="btn btn-danger"
+                    onclick="return confirm('Na pewno usunąć tę ocenę?')">🗑️ Usuń ocenę</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal edycji oceny -->
+    <div class="modal" id="editModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Edytuj ocenę</h3>
+                <button class="modal-close" onclick="closeModal('editModal')">&times;</button>
+            </div>
+            <form method="post">
+                <?php echo csrf_field(); ?>
+                <input type="hidden" name="edytuj_ocene" value="1">
+                <input type="hidden" name="ocena_id" id="edit_ocena_id">
+
+                <div class="form-group">
+                    <label>Kategoria</label>
+                    <select name="kategoria_id" id="edit_kategoria">
+                        <?php foreach ($kategorie as $kat): ?>
+                            <option value="<?php echo $kat['id']; ?>"><?php echo e($kat['nazwa']); ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Ocena</label>
+                    <input type="text" name="ocena" id="edit_ocena" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Komentarz</label>
+                    <textarea name="komentarz" id="edit_komentarz" rows="2"></textarea>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-full">Zapisz zmiany</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal poprawiania oceny -->
+    <div class="modal" id="correctionModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Wstaw poprawkę</h3>
+                <button class="modal-close" onclick="closeModal('correctionModal')">&times;</button>
+            </div>
+            <p style="background:#fff3cd; padding:10px; border-radius:6px; margin-bottom:15px;">
+                ⚠️ Stara ocena zostanie oznaczona jako poprawiona (nie będzie liczyć się do średniej).
+                Nowa ocena pojawi się z gwiazdką ★.
+            </p>
+            <form method="post">
+                <?php echo csrf_field(); ?>
+                <input type="hidden" name="popraw_ocene" value="1">
+                <input type="hidden" name="stara_ocena_id" id="correction_ocena_id">
+
+                <div class="form-group">
+                    <label>Nowa ocena (poprawka)</label>
+                    <input type="text" name="nowa_ocena" required placeholder="np. 4, 4+, 5-">
+                </div>
+
+                <div class="form-group">
+                    <label>Komentarz</label>
+                    <textarea name="komentarz" rows="2" placeholder="np. Poprawka sprawdzianu">Poprawka oceny</textarea>
+                </div>
+
+                <button type="submit" class="btn btn-success btn-full">Zapisz poprawkę</button>
+            </form>
+        </div>
+    </div>
+
+    <style>
+        .ocena-clickable {
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .ocena-clickable:hover {
+            transform: scale(1.15);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #28a745 0%, #218838 100%);
+            color: white;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+            text-align: center;
+        }
+    </style>
+
     <script>
+        let currentGrade = {};
+
         function openModal(uczenId, uczenNazwa) {
             document.getElementById('modal_uczen_id').value = uczenId;
             document.getElementById('modal_uczen_nazwa').value = uczenNazwa;
             document.getElementById('gradeModal').classList.add('active');
         }
 
-        function closeModal() {
-            document.getElementById('gradeModal').classList.remove('active');
+        function closeModal(id) {
+            document.getElementById(id).classList.remove('active');
         }
 
+        function toggleCustomCategory(select) {
+            document.getElementById('customCategoryGroup').style.display = select.value === '0' ? 'block' : 'none';
+        }
+
+        function showGradeActions(el) {
+            currentGrade = {
+                id: el.dataset.id,
+                ocena: el.dataset.ocena,
+                kategoriaId: el.dataset.kategoria,
+                komentarz: el.dataset.komentarz || '',
+                czyPoprawiona: el.dataset.poprawiona === '1',
+                uczenId: el.dataset.uczen
+            };
+
+            document.getElementById('action_info').innerHTML =
+                '<strong>Ocena:</strong> ' + currentGrade.ocena + '<br><small>' + (currentGrade.komentarz || 'Brak komentarza') + '</small>';
+
+            // Ukryj przyciski dla już poprawionych ocen
+            document.getElementById('btn_edit').style.display = currentGrade.czyPoprawiona ? 'none' : 'block';
+            document.getElementById('btn_correct').style.display = currentGrade.czyPoprawiona ? 'none' : 'block';
+            document.getElementById('btn_delete').href = '?klasa=<?php echo $wybrana_klasa_id; ?>&przedmiot=<?php echo $wybrany_przedmiot_id; ?>&usun_ocene=' + currentGrade.id;
+
+            document.getElementById('actionsModal').classList.add('active');
+        }
+
+        function openEditModal() {
+            closeModal('actionsModal');
+            document.getElementById('edit_ocena_id').value = currentGrade.id;
+            document.getElementById('edit_ocena').value = currentGrade.ocena;
+            document.getElementById('edit_kategoria').value = currentGrade.kategoriaId;
+            document.getElementById('edit_komentarz').value = currentGrade.komentarz;
+            document.getElementById('editModal').classList.add('active');
+        }
+
+        function openCorrectionModal() {
+            closeModal('actionsModal');
+            document.getElementById('correction_ocena_id').value = currentGrade.id;
+            document.getElementById('correctionModal').classList.add('active');
+        }
+
+        // Event listener dla badge ocen
+        document.querySelectorAll('.ocena-clickable').forEach(badge => {
+            badge.addEventListener('click', function() {
+                showGradeActions(this);
+            });
+        });
+
         // Zamknij modal po kliknięciu poza nim
-        document.getElementById('gradeModal').addEventListener('click', function (e) {
-            if (e.target === this) closeModal();
+        document.querySelectorAll('.modal').forEach(modal => {
+            modal.addEventListener('click', function (e) {
+                if (e.target === this) this.classList.remove('active');
+            });
         });
     </script>
 </body>
