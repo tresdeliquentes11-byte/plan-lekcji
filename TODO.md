@@ -4,48 +4,6 @@
 
 ---
 
-## Wersja 3.0 - Manualna zmiana planu
-
-### Opis ogólny
-Możliwość przestawiania lekcji w planie i system który upewni się że nie ma konfliktów.
-
-### Funkcjonalności szczegółowe
-
-#### Drag & Drop w interfejsie
-- Przeciąganie lekcji między slotami czasowymi
-- Wizualne podświetlenie dostępnych miejsc
-- Animacje podczas przenoszenia
-- Cofnij/Ponów zmiany (Undo/Redo)
-
-#### System wykrywania konfliktów
-- **Konflikt nauczyciela**: Sprawdzenie czy nauczyciel nie ma w tym samym czasie innej lekcji
-- **Konflikt klasy**: Weryfikacja czy klasa nie ma już zajęć w danym słocie
-- **Konflikt sali**: Kontrola dostępności sali lekcyjnej
-- **Wymiar godzin**: Sprawdzenie czy nie przekroczono wymiaru godzin dla przedmiotu/nauczyciela
-
-#### Walidacja i ostrzeżenia
-- Komunikaty o wykrytych konfliktach przed zapisaniem zmian
-- Sugestie alternatywnych terminów
-- Historia zmian w planie z możliwością przywrócenia poprzedniej wersji
-- Logowanie kto i kiedy dokonał zmiany w planie
-
-#### Role użytkowników
-- **Dyrektor**: Pełne uprawnienia do zmian
-- **Administrator**: Możliwość modyfikacji całego planu
-- **Nauczyciel**: Możliwość zgłaszania propozycji zmian (wymaga zatwierdzenia)
-
-### Wymagania techniczne
-- Implementacja algorytmu wykrywania konfliktów w czasie rzeczywistym
-- Baza danych: rozszerzenie modeli o pole `history` i `change_log`
-- Frontend: Biblioteka do drag & drop (np. react-beautiful-dnd)
-
-### Potencjalne wyzwania
-- Optymalizacja wydajności przy dużej liczbie lekcji
-- Obsługa jednoczesnych zmian przez wielu użytkowników (race conditions)
-- Zachowanie integralności danych podczas zmian
-
----
-
 ## Wersja 4.0 - System Ocen oraz Wiadomości
 
 ### Opis ogólny
