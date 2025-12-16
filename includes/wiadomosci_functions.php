@@ -222,36 +222,47 @@ function liczba_nieprzeczytanych($conn, $uzytkownik_id)
 /**
  * Pobiera listę użytkowników do wyboru odbiorcy
  */
+/**
+ * Pobiera listę użytkowników do wyboru odbiorcy
+ */
 function pobierz_liste_odbiorcow($conn, $uzytkownik_id, $typ_uzytkownika)
 {
     $odbiorcy = [];
 
     // Pobierz nauczycieli (dostępni dla wszystkich)
-    $result = $conn->query("
+    $stmt = $conn->prepare("
         SELECT u.id, u.imie, u.nazwisko, 'nauczyciel' as typ
         FROM uzytkownicy u
         JOIN nauczyciele n ON u.id = n.uzytkownik_id
-        WHERE u.aktywny = 1 AND u.id != $uzytkownik_id
+        WHERE u.aktywny = 1 AND u.id != ?
         ORDER BY u.nazwisko, u.imie
     ");
+    $stmt->bind_param("i", $uzytkownik_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
     while ($row = $result->fetch_assoc()) {
         $odbiorcy['Nauczyciele'][] = $row;
     }
+    $stmt->close();
 
     // Dyrektor (dostępny dla wszystkich)
-    $result = $conn->query("
+    $stmt = $conn->prepare("
         SELECT id, imie, nazwisko, 'dyrektor' as typ
         FROM uzytkownicy
-        WHERE typ = 'dyrektor' AND aktywny = 1 AND id != $uzytkownik_id
+        WHERE typ = 'dyrektor' AND aktywny = 1 AND id != ?
         ORDER BY nazwisko, imie
     ");
+    $stmt->bind_param("i", $uzytkownik_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
     while ($row = $result->fetch_assoc()) {
         $odbiorcy['Dyrekcja'][] = $row;
     }
+    $stmt->close();
 
     // Dla nauczycieli - dostęp do uczniów z ich klas
     if ($typ_uzytkownika === 'nauczyciel') {
-        $result = $conn->query("
+        $stmt = $conn->prepare("
             SELECT DISTINCT u.id, u.imie, u.nazwisko, k.nazwa as klasa, 'uczen' as typ
             FROM uzytkownicy u
             JOIN uczniowie uc ON u.id = uc.uzytkownik_id
@@ -259,13 +270,17 @@ function pobierz_liste_odbiorcow($conn, $uzytkownik_id, $typ_uzytkownika)
             JOIN klasa_przedmioty kp ON k.id = kp.klasa_id
             JOIN nauczyciele n ON kp.nauczyciel_id = n.id
             JOIN uzytkownicy nu ON n.uzytkownik_id = nu.id
-            WHERE nu.id = $uzytkownik_id AND u.aktywny = 1
+            WHERE nu.id = ? AND u.aktywny = 1
             ORDER BY k.nazwa, u.nazwisko, u.imie
         ");
+        $stmt->bind_param("i", $uzytkownik_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
         while ($row = $result->fetch_assoc()) {
             $klasa = $row['klasa'];
             $odbiorcy["Uczniowie klasy $klasa"][] = $row;
         }
+        $stmt->close();
     }
 
     // Dla dyrektora - dostęp do wszystkich
@@ -293,17 +308,21 @@ function pobierz_liste_odbiorcow($conn, $uzytkownik_id, $typ_uzytkownika)
 function wyslij_do_klasy($conn, $nadawca_id, $klasa_id, $temat, $tresc, $czy_wazne = false)
 {
     // Pobierz wszystkich uczniów z klasy
-    $result = $conn->query("
+    $stmt = $conn->prepare("
         SELECT u.id
         FROM uzytkownicy u
         JOIN uczniowie uc ON u.id = uc.uzytkownik_id
-        WHERE uc.klasa_id = $klasa_id AND u.aktywny = 1
+        WHERE uc.klasa_id = ? AND u.aktywny = 1
     ");
+    $stmt->bind_param("i", $klasa_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
 
     $odbiorcy_ids = [];
     while ($row = $result->fetch_assoc()) {
         $odbiorcy_ids[] = $row['id'];
     }
+    $stmt->close();
 
     if (empty($odbiorcy_ids)) {
         return false;
@@ -353,7 +372,16 @@ function upload_zalacznik($plik, $wiadomosc_id)
     $typ_mime = finfo_file($finfo, $plik['tmp_name']);
     finfo_close($finfo);
 
-    if (!in_array($typ_mime, $dozwolone_typy)) {
+    // Mapa dozwolonych typów MIME na bezpieczne rozszerzenia
+    $mime_map = [
+        'application/pdf' => 'pdf',
+        'application/msword' => 'doc',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document' => 'docx',
+        'image/jpeg' => 'jpg',
+        'image/png' => 'png'
+    ];
+
+    if (!array_key_exists($typ_mime, $mime_map)) {
         return ['error' => 'Niedozwolony typ pliku'];
     }
 
@@ -362,13 +390,14 @@ function upload_zalacznik($plik, $wiadomosc_id)
         mkdir($upload_dir, 0755, true);
     }
 
-    $rozszerzenie = pathinfo($plik['name'], PATHINFO_EXTENSION);
+    // Ustal bezpieczne rozszerzenie na podstawie typu MIME
+    $rozszerzenie = $mime_map[$typ_mime];
     $bezpieczna_nazwa = uniqid('attach_') . '_' . time() . '.' . $rozszerzenie;
     $sciezka = $upload_dir . $bezpieczna_nazwa;
 
     if (move_uploaded_file($plik['tmp_name'], $sciezka)) {
         return [
-            'nazwa_pliku' => $plik['name'],
+            'nazwa_pliku' => $plik['name'], // Zachowujemy oryginalną nazwę do wyświetlania
             'sciezka' => 'uploads/wiadomosci/' . $bezpieczna_nazwa,
             'rozmiar' => $plik['size'],
             'typ_mime' => $typ_mime

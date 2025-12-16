@@ -31,7 +31,10 @@ function dodaj_ocene($conn, $uczen_id, $przedmiot_id, $nauczyciel_id, $kategoria
 
     // Jeśli to poprawka, oznacz starą ocenę jako poprawioną
     if ($poprawia_ocene_id && $result) {
-        $conn->query("UPDATE oceny SET czy_poprawiona = 1 WHERE id = $poprawia_ocene_id");
+        $upd_stmt = $conn->prepare("UPDATE oceny SET czy_poprawiona = 1 WHERE id = ?");
+        $upd_stmt->bind_param("i", $poprawia_ocene_id);
+        $upd_stmt->execute();
+        $upd_stmt->close();
     }
 
     $stmt->close();

@@ -13,15 +13,7 @@ wyczysc_stare_zalaczniki($conn, 30);
 $message = '';
 $error = '';
 
-// Ręczne czyszczenie wszystkich załączników
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['czysc_wszystkie'])) {
-    if (!verify_csrf_token($_POST['csrf_token'] ?? '')) {
-        $error = 'Błąd tokenu CSRF';
-    } else {
-        $ilosc = wyczysc_wszystkie_zalaczniki($conn);
-        $message = "Wyczyszczono wszystkie załączniki z serwera ($ilosc plików).";
-    }
-}
+
 
 // Wysyłanie wiadomości
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['wyslij'])) {
@@ -61,15 +53,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['wyslij'])) {
     }
 }
 
-if (isset($_GET['usun'])) {
-    if (usun_wiadomosc($conn, intval($_GET['usun']), $user_id)) {
-        $message = 'Wiadomość usunięta';
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (isset($_POST['usun'])) {
+        if (!verify_csrf_token($_POST['csrf_token'] ?? '')) {
+            $error = 'Błąd tokenu CSRF';
+        } else {
+            if (usun_wiadomosc($conn, intval($_POST['usun']), $user_id)) {
+                $message = 'Wiadomość usunięta';
+            }
+        }
     }
-}
 
-if (isset($_GET['archiwizuj'])) {
-    if (archiwizuj_wiadomosc($conn, intval($_GET['archiwizuj']), $user_id)) {
-        $message = 'Wiadomość zarchiwizowana';
+    if (isset($_POST['archiwizuj'])) {
+        if (!verify_csrf_token($_POST['csrf_token'] ?? '')) {
+            $error = 'Błąd tokenu CSRF';
+        } else {
+            if (archiwizuj_wiadomosc($conn, intval($_POST['archiwizuj']), $user_id)) {
+                $message = 'Wiadomość zarchiwizowana';
+            }
+        }
+    }
+
+    // Ręczne czyszczenie wszystkich załączników
+    if (isset($_POST['czysc_wszystkie'])) {
+        if (!verify_csrf_token($_POST['csrf_token'] ?? '')) {
+            $error = 'Błąd tokenu CSRF';
+        } else {
+            $ilosc = wyczysc_wszystkie_zalaczniki($conn);
+            $message = "Wyczyszczono wszystkie załączniki z serwera ($ilosc plików).";
+        }
     }
 }
 
@@ -344,10 +356,17 @@ $lista_odbiorcow = pobierz_liste_odbiorcow($conn, $user_id, $user_type);
                             <div class="mail-header">
                                 <a href="?folder=<?php echo $folder; ?>" class="btn btn-secondary">← Powrót</a>
                                 <div>
-                                    <a href="?folder=<?php echo $folder; ?>&archiwizuj=<?php echo $szczegoly['id']; ?>"
-                                        class="btn btn-secondary">📁 Archiwizuj</a>
-                                    <a href="?folder=<?php echo $folder; ?>&usun=<?php echo $szczegoly['id']; ?>"
-                                        class="btn btn-danger" onclick="return confirm('Usunąć?')">🗑️ Usuń</a>
+                                    <form method="post" style="display:inline;">
+                                        <?php echo csrf_field(); ?>
+                                        <input type="hidden" name="archiwizuj" value="<?php echo $szczegoly['id']; ?>">
+                                        <button type="submit" class="btn btn-secondary">📁 Archiwizuj</button>
+                                    </form>
+
+                                    <form method="post" style="display:inline;" onsubmit="return confirm('Usunąć?');">
+                                        <?php echo csrf_field(); ?>
+                                        <input type="hidden" name="usun" value="<?php echo $szczegoly['id']; ?>">
+                                        <button type="submit" class="btn btn-danger">🗑️ Usuń</button>
+                                    </form>
                                 </div>
                             </div>
                             <div class="mail-view">

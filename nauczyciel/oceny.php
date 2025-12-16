@@ -113,12 +113,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edytuj_ocene'])) {
 }
 
 // Usuwanie oceny
-if (isset($_GET['usun_ocene'])) {
-    $ocena_id = intval($_GET['usun_ocene']);
-    if (usun_ocene($conn, $ocena_id, $nauczyciel_id)) {
-        $message = 'Ocena została usunięta';
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['usun_ocene'])) {
+    if (!verify_csrf_token($_POST['csrf_token'] ?? '')) {
+        $error = 'Błąd weryfikacji tokenu CSRF';
     } else {
-        $error = 'Nie można usunąć tej oceny (brak uprawnień lub ocena nie istnieje)';
+        $ocena_id = intval($_POST['ocena_id']);
+        if (usun_ocene($conn, $ocena_id, $nauczyciel_id)) {
+            $message = 'Ocena została usunięta';
+        } else {
+            $error = 'Nie można usunąć tej oceny (brak uprawnień lub ocena nie istnieje)';
+        }
     }
 }
 
@@ -568,15 +572,15 @@ if ($wybrana_klasa_id && $wybrany_przedmiot_id) {
                                                 <span class="ocena-badge ocena-clickable"
                                                     style="background: <?php echo kolor_oceny($o['ocena']); ?>; opacity: <?php echo $opacity; ?>"
                                                     title="<?php echo e($o['kategoria'] . ' - ' . formatuj_date($o['data_wystawienia'])); ?>"
-                                                    data-id="<?php echo $o['id']; ?>"
-                                                    data-ocena="<?php echo $o['ocena']; ?>"
+                                                    data-id="<?php echo $o['id']; ?>" data-ocena="<?php echo $o['ocena']; ?>"
                                                     data-kategoria="<?php echo $o['kategoria_id']; ?>"
                                                     data-komentarz="<?php echo $komentarz_safe; ?>"
                                                     data-poprawiona="<?php echo $o['czy_poprawiona'] ? '1' : '0'; ?>"
                                                     data-uczen="<?php echo $uczen['uczen_id']; ?>">
                                                     <?php if ($is_poprawka): ?><span style="font-size:10px">★</span><?php endif; ?>
                                                     <?php echo formatuj_ocene($o['ocena']); ?>
-                                                    <?php if ($o['czy_poprawiona']): ?><span style="font-size:9px">✗</span><?php endif; ?>
+                                                    <?php if ($o['czy_poprawiona']): ?><span
+                                                            style="font-size:9px">✗</span><?php endif; ?>
                                                 </span>
                                             <?php endforeach; ?>
                                         </div>
@@ -664,6 +668,7 @@ if ($wybrana_klasa_id && $wybrany_przedmiot_id) {
     </div>
 
     <!-- Modal akcji na ocenie -->
+    <!-- Modal akcji na ocenie -->
     <div class="modal" id="actionsModal">
         <div class="modal-content" style="max-width:400px;">
             <div class="modal-header">
@@ -675,8 +680,15 @@ if ($wybrana_klasa_id && $wybrany_przedmiot_id) {
                 <button class="btn btn-secondary" onclick="openEditModal()" id="btn_edit">✏️ Edytuj ocenę</button>
                 <button class="btn btn-primary" onclick="openCorrectionModal()" id="btn_correct">📝 Wstaw
                     poprawkę</button>
-                <a href="#" id="btn_delete" class="btn btn-danger"
-                    onclick="return confirm('Na pewno usunąć tę ocenę?')">🗑️ Usuń ocenę</a>
+
+                <form method="post" id="form_delete" onsubmit="return confirm('Na pewno usunąć tę ocenę?');"
+                    style="margin: 0;">
+                    <?php echo csrf_field(); ?>
+                    <input type="hidden" name="usun_ocene" value="1">
+                    <input type="hidden" name="ocena_id" id="delete_ocena_id">
+                    <button type="submit" class="btn btn-danger" id="btn_delete" style="width:100%">🗑️ Usuń
+                        ocenę</button>
+                </form>
             </div>
         </div>
     </div>
@@ -800,10 +812,16 @@ if ($wybrana_klasa_id && $wybrany_przedmiot_id) {
             document.getElementById('action_info').innerHTML =
                 '<strong>Ocena:</strong> ' + currentGrade.ocena + '<br><small>' + (currentGrade.komentarz || 'Brak komentarza') + '</small>';
 
+            document.getElementById('action_info').innerHTML =
+                '<strong>Ocena:</strong> ' + currentGrade.ocena + '<br><small>' + (currentGrade.komentarz || 'Brak komentarza') + '</small>';
+
             // Ukryj przyciski dla już poprawionych ocen
-            document.getElementById('btn_edit').style.display = currentGrade.czyPoprawiona ? 'none' : 'block';
-            document.getElementById('btn_correct').style.display = currentGrade.czyPoprawiona ? 'none' : 'block';
-            document.getElementById('btn_delete').href = '?klasa=<?php echo $wybrana_klasa_id; ?>&przedmiot=<?php echo $wybrany_przedmiot_id; ?>&usun_ocene=' + currentGrade.id;
+            const display = currentGrade.czyPoprawiona ? 'none' : 'block';
+            document.getElementById('btn_edit').style.display = display;
+            document.getElementById('btn_correct').style.display = display;
+            document.getElementById('form_delete').style.display = display;
+
+            document.getElementById('delete_ocena_id').value = currentGrade.id;
 
             document.getElementById('actionsModal').classList.add('active');
         }
@@ -825,7 +843,7 @@ if ($wybrana_klasa_id && $wybrany_przedmiot_id) {
 
         // Event listener dla badge ocen
         document.querySelectorAll('.ocena-clickable').forEach(badge => {
-            badge.addEventListener('click', function() {
+            badge.addEventListener('click', function () {
                 showGradeActions(this);
             });
         });
