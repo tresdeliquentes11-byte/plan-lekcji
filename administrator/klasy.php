@@ -163,9 +163,13 @@ $klasy = $conn->query("
     LEFT JOIN uzytkownicy u ON n.uzytkownik_id = u.id
     ORDER BY k.nazwa
 ");
+
+// Pobierz przedmioty rozszerzone
+$przedmioty_rozszerzone = $conn->query("SELECT * FROM przedmioty WHERE czy_rozszerzony = 1 ORDER BY nazwa");
 ?>
 <!DOCTYPE html>
 <html lang="pl">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -184,13 +188,13 @@ $klasy = $conn->query("
             background: white;
             border-radius: 8px;
             padding: 20px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
             transition: transform 0.2s, box-shadow 0.2s;
         }
 
         .klasa-card:hover {
             transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
         }
 
         .klasa-card-header {
@@ -276,7 +280,7 @@ $klasy = $conn->query("
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0,0,0,0.5);
+            background: rgba(0, 0, 0, 0.5);
             z-index: 1000;
         }
 
@@ -287,7 +291,7 @@ $klasy = $conn->query("
             width: 90%;
             max-width: 500px;
             border-radius: 10px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
         }
 
         .modal-header {
@@ -318,6 +322,7 @@ $klasy = $conn->query("
         }
     </style>
 </head>
+
 <body>
     <div class="admin-layout">
         <?php include 'includes/sidebar.php'; ?>
@@ -374,12 +379,16 @@ $klasy = $conn->query("
                                 <label>Rozszerzenie 1 *</label>
                                 <select name="rozszerzenie_1" required>
                                     <option value="">Wybierz</option>
-                                    <option value="Matematyka rozszerzona">Matematyka rozszerzona</option>
-                                    <option value="Fizyka rozszerzona">Fizyka rozszerzona</option>
-                                    <option value="Język angielski rozszerzony">Język angielski rozszerzony</option>
-                                    <option value="Informatyka rozszerzona">Informatyka rozszerzona</option>
-                                    <option value="Biologia rozszerzona">Biologia rozszerzona</option>
-                                    <option value="Chemia rozszerzona">Chemia rozszerzona</option>
+                                    <?php
+                                    if ($przedmioty_rozszerzone->num_rows > 0) {
+                                        $przedmioty_rozszerzone->data_seek(0);
+                                        while ($p = $przedmioty_rozszerzone->fetch_assoc()):
+                                            ?>
+                                            <option value="<?php echo e($p['nazwa']); ?>"><?php echo e($p['nazwa']); ?></option>
+                                        <?php
+                                        endwhile;
+                                    }
+                                    ?>
                                 </select>
                             </div>
 
@@ -387,18 +396,23 @@ $klasy = $conn->query("
                                 <label>Rozszerzenie 2 *</label>
                                 <select name="rozszerzenie_2" required>
                                     <option value="">Wybierz</option>
-                                    <option value="Matematyka rozszerzona">Matematyka rozszerzona</option>
-                                    <option value="Fizyka rozszerzona">Fizyka rozszerzona</option>
-                                    <option value="Język angielski rozszerzony">Język angielski rozszerzony</option>
-                                    <option value="Informatyka rozszerzona">Informatyka rozszerzona</option>
-                                    <option value="Biologia rozszerzona">Biologia rozszerzona</option>
-                                    <option value="Chemia rozszerzona">Chemia rozszerzona</option>
+                                    <?php
+                                    if ($przedmioty_rozszerzone->num_rows > 0) {
+                                        $przedmioty_rozszerzone->data_seek(0);
+                                        while ($p = $przedmioty_rozszerzone->fetch_assoc()):
+                                            ?>
+                                            <option value="<?php echo e($p['nazwa']); ?>"><?php echo e($p['nazwa']); ?></option>
+                                        <?php
+                                        endwhile;
+                                    }
+                                    ?>
                                 </select>
                             </div>
                         </div>
 
                         <button type="submit" name="dodaj_klase" class="btn btn-primary" style="margin-top: 15px;">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 5px;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2" style="vertical-align: middle; margin-right: 5px;">
                                 <line x1="12" y1="5" x2="12" y2="19"></line>
                                 <line x1="5" y1="12" x2="19" y2="12"></line>
                             </svg>
@@ -453,10 +467,14 @@ $klasy = $conn->query("
                                     </div>
 
                                     <div class="klasa-actions">
-                                        <button type="button" class="btn-delete" onclick="confirmDelete(<?php echo $klasa['id']; ?>, '<?php echo e($klasa['nazwa']); ?>', <?php echo $klasa['liczba_uczniow']; ?>, <?php echo $klasa['liczba_przedmiotow']; ?>)">
-                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 5px;">
+                                        <button type="button" class="btn-delete"
+                                            onclick="confirmDelete(<?php echo $klasa['id']; ?>, '<?php echo e($klasa['nazwa']); ?>', <?php echo $klasa['liczba_uczniow']; ?>, <?php echo $klasa['liczba_przedmiotow']; ?>)">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                                stroke-width="2" style="vertical-align: middle; margin-right: 5px;">
                                                 <polyline points="3 6 5 6 21 6"></polyline>
-                                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                                <path
+                                                    d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2">
+                                                </path>
                                             </svg>
                                             Usuń klasę
                                         </button>
@@ -517,7 +535,7 @@ $klasy = $conn->query("
         }
 
         // Zamknij modal przy kliknięciu poza nim
-        window.onclick = function(event) {
+        window.onclick = function (event) {
             const modal = document.getElementById('deleteModal');
             if (event.target == modal) {
                 closeDeleteModal();
@@ -525,4 +543,5 @@ $klasy = $conn->query("
         }
     </script>
 </body>
+
 </html>

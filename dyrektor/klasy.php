@@ -110,6 +110,10 @@ $nauczyciele = $conn->query("
 // Pobierz przedmioty
 $przedmioty = $conn->query("SELECT * FROM przedmioty ORDER BY nazwa");
 
+// Pobierz przedmioty rozszerzone
+$przedmioty_rozszerzone = $conn->query("SELECT * FROM przedmioty WHERE czy_rozszerzony = 1 ORDER BY nazwa");
+
+
 $selected_klasa = null;
 if (isset($_GET['klasa_id'])) {
     $klasa_id = intval($_GET['klasa_id']);
@@ -193,9 +197,18 @@ if (isset($_GET['klasa_id'])) {
                             <label>Rozszerzenie 1</label>
                             <select name="rozszerzenie_1" required>
                                 <option value="">Wybierz</option>
-                                <option value="Matematyka rozszerzona" <?php echo ($selected_klasa['rozszerzenie_1'] == 'Matematyka rozszerzona') ? 'selected' : ''; ?>>Matematyka rozszerzona</option>
-                                <option value="Fizyka rozszerzona" <?php echo ($selected_klasa['rozszerzenie_1'] == 'Fizyka rozszerzona') ? 'selected' : ''; ?>>Fizyka rozszerzona</option>
-                                <option value="Język angielski rozszerzony" <?php echo ($selected_klasa['rozszerzenie_1'] == 'Język angielski rozszerzony') ? 'selected' : ''; ?>>Język angielski rozszerzony</option>
+                                <?php 
+                                if ($przedmioty_rozszerzone->num_rows > 0) {
+                                    $przedmioty_rozszerzone->data_seek(0);
+                                    while ($p = $przedmioty_rozszerzone->fetch_assoc()): 
+                                ?>
+                                    <option value="<?php echo e($p['nazwa']); ?>" <?php echo ($selected_klasa['rozszerzenie_1'] == $p['nazwa']) ? 'selected' : ''; ?>>
+                                        <?php echo e($p['nazwa']); ?>
+                                    </option>
+                                <?php 
+                                    endwhile;
+                                }
+                                ?>
                             </select>
                         </div>
                         
@@ -203,9 +216,18 @@ if (isset($_GET['klasa_id'])) {
                             <label>Rozszerzenie 2</label>
                             <select name="rozszerzenie_2" required>
                                 <option value="">Wybierz</option>
-                                <option value="Matematyka rozszerzona" <?php echo ($selected_klasa['rozszerzenie_2'] == 'Matematyka rozszerzona') ? 'selected' : ''; ?>>Matematyka rozszerzona</option>
-                                <option value="Fizyka rozszerzona" <?php echo ($selected_klasa['rozszerzenie_2'] == 'Fizyka rozszerzona') ? 'selected' : ''; ?>>Fizyka rozszerzona</option>
-                                <option value="Język angielski rozszerzony" <?php echo ($selected_klasa['rozszerzenie_2'] == 'Język angielski rozszerzony') ? 'selected' : ''; ?>>Język angielski rozszerzony</option>
+                                <?php 
+                                if ($przedmioty_rozszerzone->num_rows > 0) {
+                                    $przedmioty_rozszerzone->data_seek(0);
+                                    while ($p = $przedmioty_rozszerzone->fetch_assoc()): 
+                                ?>
+                                    <option value="<?php echo e($p['nazwa']); ?>" <?php echo ($selected_klasa['rozszerzenie_2'] == $p['nazwa']) ? 'selected' : ''; ?>>
+                                        <?php echo e($p['nazwa']); ?>
+                                    </option>
+                                <?php 
+                                    endwhile;
+                                }
+                                ?>
                             </select>
                         </div>
                         
