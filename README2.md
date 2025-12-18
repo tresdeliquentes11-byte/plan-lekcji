@@ -727,7 +727,7 @@ function verify_csrf_token($token) {
 - **Silne hasła** - minimum 8 znaków, różne typy znaków
 - **Hashowanie haseł** - bcrypt (zaimplementowane)
 - **Wymuszanie zmiany haseł** - przy pierwszym logowaniu
-- **2FA** -可以考虑未来实现 (możliwość implementacji w przyszłości)
+- **2FA** - możliwość implementacji w przyszłości
 
 #### Audyt i monitoring
 - **Logowanie wszystkich akcji** użytkowników
@@ -843,9 +843,9 @@ try {
 
 ## Współpraca
 
-### Jak贡献ować (Jak współpracować)
+### Jak współpracować
 
-#### Proces贡献 (Proces współpracy)
+#### Proces współpracy
 1. **Forkuj** repozytorium
 2. **Stwórz branch** dla swojej funkcji:
 ```bash
@@ -902,10 +902,10 @@ git push origin feature/nazwa-funkcji
 - **v7.0:** Prace domowe
 
 #### Roadmap
-1. **Q1 2025:** Stabilizacja v2.4
-2. **Q2 2025:** Rozwój v4.0
-3. **Q3 2025:** Testy beta v4.0
-4. **Q4 2025:** Wdrożenie v4.0
+1. **Q1 2025:** Stabilizacja v4.0
+2. **Q2 2025:** Rozwój v4.+
+3. **Q3 2025:** Testy beta v5.0
+4. **Q4 2025:** Wdrożenie v5.0
 
 ---
 
@@ -923,7 +923,7 @@ LibreLessons jest licencjonowane na zasadach **TEUL** (TresDeliquentes Education
 - **Email:** kontakt@librelessons.pl (przykładowy)
 
 ### Podziękowania
-Wszystkim osobom贡献ującym (współpracującym) do projektu LibreLessons.
+Wszystkim osobom współpracującym do projektu LibreLessons.
 
 ---
 
