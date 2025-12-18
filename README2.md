@@ -25,8 +25,8 @@
 
 **LibreLessons** to otwarty system zarządzania planem lekcji dla szkół, napisany w PHP z wykorzystaniem bazy danych MySQL/MariaDB. System umożliwia kompleksowe zarządzanie organizacją zajęć szkolnych, w tym automatyczne generowanie planów, zarządzanie zastępstwami i obsługę wielorolnych użytkowników.
 
-**Wersja dokumentacji:** 2.4  
-**Wersja systemu:** 2.4  
+**Wersja dokumentacji:** 4.1  
+**Wersja systemu:** 4.1  
 **Data aktualizacji:** 2025-12-18
 
 ---
