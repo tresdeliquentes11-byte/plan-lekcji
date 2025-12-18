@@ -45,6 +45,9 @@ function zarzadzaj_sesja($uzytkownik_id, $akcja = 'login') {
         $stmt->bind_param("isss", $uzytkownik_id, $session_id, $ip_address, $user_agent);
         $stmt->execute();
         $stmt->close();
+        
+        // Store IP in session for validation
+        $_SESSION['ip_address'] = $ip_address;
     } elseif ($akcja === 'logout') {
         // Dezaktywuj sesję
         $stmt = $conn->prepare("UPDATE sesje_uzytkownikow SET aktywna = 0 WHERE session_id = ?");
@@ -146,9 +149,27 @@ function pobierz_uzytkownika($id) {
 function dodaj_uzytkownika($dane) {
     global $conn;
 
+    // Input validation
+    try {
+        $login = validate_input($dane['login'], 'alphanum');
+        $haslo = validate_input($dane['haslo'], 'string');
+        $typ = validate_input($dane['typ'], 'string');
+        $imie = validate_input($dane['imie'], 'alpha');
+        $nazwisko = validate_input($dane['nazwisko'], 'alpha');
+        $email = validate_input($dane['email'], 'email', false);
+        
+        // Validate minimum password length
+        if (strlen($haslo) < 8) {
+            return ['success' => false, 'message' => 'Hasło musi mieć co najmniej 8 znaków'];
+        }
+        
+    } catch (InvalidArgumentException $e) {
+        return ['success' => false, 'message' => $e->getMessage()];
+    }
+
     // Sprawdź czy login jest unikalny
     $stmt = $conn->prepare("SELECT id FROM uzytkownicy WHERE login = ?");
-    $stmt->bind_param("s", $dane['login']);
+    $stmt->bind_param("s", $login);
     $stmt->execute();
     $result = $stmt->get_result();
     if ($result->num_rows > 0) {
@@ -158,12 +179,12 @@ function dodaj_uzytkownika($dane) {
     $stmt->close();
 
     // Hashuj hasło
-    $haslo_hash = password_hash($dane['haslo'], PASSWORD_DEFAULT);
+    $haslo_hash = password_hash($haslo, PASSWORD_DEFAULT);
 
     // Dodaj użytkownika
     $stmt = $conn->prepare("INSERT INTO uzytkownicy (login, haslo, typ, imie, nazwisko, email, aktywny) VALUES (?, ?, ?, ?, ?, ?, ?)");
     $aktywny = isset($dane['aktywny']) ? $dane['aktywny'] : 1;
-    $stmt->bind_param("ssssssi", $dane['login'], $haslo_hash, $dane['typ'], $dane['imie'], $dane['nazwisko'], $dane['email'], $aktywny);
+    $stmt->bind_param("ssssssi", $login, $haslo_hash, $typ, $imie, $nazwisko, $email, $aktywny);
 
     if ($stmt->execute()) {
         $uzytkownik_id = $conn->insert_id;
@@ -186,7 +207,7 @@ function dodaj_uzytkownika($dane) {
         }
 
         // Loguj aktywność
-        loguj_aktywnosc($_SESSION['user_id'], 'dodanie_uzytkownika', "Dodano użytkownika: {$dane['login']} ({$dane['typ']})", ['uzytkownik_id' => $uzytkownik_id]);
+        loguj_aktywnosc($_SESSION['user_id'], 'dodanie_uzytkownika', "Dodano użytkownika: $login ($typ)", ['uzytkownik_id' => $uzytkownik_id]);
 
         return ['success' => true, 'message' => 'Użytkownik został dodany', 'id' => $uzytkownik_id];
     } else {

@@ -107,16 +107,36 @@ class GeneratorZastepstw
     // Główna funkcja generująca zastępstwa
     public function generujZastepstwa($nieobecnosc_id)
     {
+        // Input validation
+        if (!is_numeric($nieobecnosc_id) || $nieobecnosc_id <= 0) {
+            error_log("SUBSTITUTE_ERROR: Invalid absence ID: $nieobecnosc_id");
+            return false;
+        }
+
         error_log("SUBSTITUTE_DEBUG: Starting smart generation for absence ID: $nieobecnosc_id");
 
         // Pobierz dane nieobecności
         $stmt = $this->conn->prepare("SELECT * FROM nieobecnosci WHERE id = ?");
-        $stmt->bind_param("i", $nieobecnosc_id);
-        $stmt->execute();
-        $nieobecnosc = $stmt->get_result()->fetch_assoc();
-
-        if (!$nieobecnosc)
+        if (!$stmt) {
+            error_log("SUBSTITUTE_ERROR: Failed to prepare absence query: " . $this->conn->error);
             return false;
+        }
+        
+        $stmt->bind_param("i", $nieobecnosc_id);
+        if (!$stmt->execute()) {
+            error_log("SUBSTITUTE_ERROR: Failed to execute absence query: " . $stmt->error);
+            $stmt->close();
+            return false;
+        }
+        
+        $result = $stmt->get_result();
+        $nieobecnosc = $result->fetch_assoc();
+        $stmt->close();
+
+        if (!$nieobecnosc) {
+            error_log("SUBSTITUTE_ERROR: Absence not found for ID: $nieobecnosc_id");
+            return false;
+        }
 
         $nauczyciel_id = $nieobecnosc['nauczyciel_id'];
         $data_od = $nieobecnosc['data_od'];
@@ -135,8 +155,18 @@ class GeneratorZastepstw
             ORDER BY pd.data, pd.numer_lekcji
         ");
 
+        if (!$stmt_lekcje) {
+            error_log("SUBSTITUTE_ERROR: Failed to prepare lessons query: " . $this->conn->error);
+            return false;
+        }
+
         $stmt_lekcje->bind_param("iss", $nauczyciel_id, $data_od, $data_do);
-        $stmt_lekcje->execute();
+        if (!$stmt_lekcje->execute()) {
+            error_log("SUBSTITUTE_ERROR: Failed to execute lessons query: " . $stmt_lekcje->error);
+            $stmt_lekcje->close();
+            return false;
+        }
+        
         $lekcje = $stmt_lekcje->get_result();
 
         $zastepstwa_utworzone = 0;
@@ -146,15 +176,21 @@ class GeneratorZastepstw
         // Cache teacher subjects map
         $nauczyciel_przedmioty = [];
         $kp_res = $this->conn->query("SELECT nauczyciel_id, przedmiot_id FROM nauczyciel_przedmioty");
-        while ($row = $kp_res->fetch_assoc()) {
-            $nauczyciel_przedmioty[$row['nauczyciel_id']][] = $row['przedmiot_id'];
+        if ($kp_res) {
+            while ($row = $kp_res->fetch_assoc()) {
+                $nauczyciel_przedmioty[$row['nauczyciel_id']][] = $row['przedmiot_id'];
+            }
+            $kp_res->free();
         }
 
         // Cache teachers teaching classes map
         $klasa_nauczyciele = [];
         $kn_res = $this->conn->query("SELECT klasa_id, nauczyciel_id FROM klasa_przedmioty");
-        while ($row = $kn_res->fetch_assoc()) {
-            $klasa_nauczyciele[$row['klasa_id']][] = $row['nauczyciel_id'];
+        if ($kn_res) {
+            while ($row = $kn_res->fetch_assoc()) {
+                $klasa_nauczyciele[$row['klasa_id']][] = $row['nauczyciel_id'];
+            }
+            $kn_res->free();
         }
 
         while ($lekcja = $lekcje->fetch_assoc()) {
@@ -205,11 +241,34 @@ class GeneratorZastepstw
             }
         }
 
+        // Clean up resources
+        $stmt_lekcje->close();
+        
+        // Clean cache periodically
+        $this->cleanupCache();
+
         return [
             'utworzone' => $zastepstwa_utworzone,
             'niemozliwe' => $zastepstwa_niemozliwe,
             'pominiete' => $zastepstwa_pominiete
         ];
+    }
+
+    /**
+     * Clean up cache to prevent memory issues
+     */
+    private function cleanupCache() {
+        $max_cache_size = 1000;
+        
+        // Clean plan cache if too large
+        if (count($this->cache_plan) > $max_cache_size) {
+            $this->cache_plan = array_slice($this->cache_plan, -$max_cache_size, null, true);
+        }
+        
+        // Clean substitution cache if too large
+        if (count($this->cache_subs) > $max_cache_size) {
+            $this->cache_subs = array_slice($this->cache_subs, -$max_cache_size, null, true);
+        }
     }
 
     private function znajdzNajlepszegoKandydata($lekcja, $absent_teacher_id, $map_subjects, $map_class_teachers)
@@ -220,8 +279,11 @@ class GeneratorZastepstw
         if ($all_teachers === null) {
             $res = $this->conn->query("SELECT n.id, u.imie, u.nazwisko FROM nauczyciele n JOIN uzytkownicy u ON n.uzytkownik_id = u.id");
             $all_teachers = [];
-            while ($row = $res->fetch_assoc()) {
-                $all_teachers[] = $row;
+            if ($res) {
+                while ($row = $res->fetch_assoc()) {
+                    $all_teachers[] = $row;
+                }
+                $res->free();
             }
         }
 
@@ -353,16 +415,45 @@ class GeneratorZastepstw
 
     private function utworzZastepstwo($plan_dzienny_id, $nieobecnosc_id, $nauczyciel_zastepujacy_id)
     {
+        // Input validation
+        if (!is_numeric($plan_dzienny_id) || $plan_dzienny_id <= 0 ||
+            !is_numeric($nieobecnosc_id) || $nieobecnosc_id <= 0 ||
+            !is_numeric($nauczyciel_zastepujacy_id) || $nauczyciel_zastepujacy_id <= 0) {
+            error_log("SUBSTITUTE_ERROR: Invalid parameters for substitution creation");
+            return false;
+        }
+
         $stmt = $this->conn->prepare("
             INSERT INTO zastepstwa (plan_dzienny_id, nieobecnosc_id, nauczyciel_zastepujacy_id)
             VALUES (?, ?, ?)
         ");
+        
+        if (!$stmt) {
+            error_log("SUBSTITUTE_ERROR: Failed to prepare substitution query: " . $this->conn->error);
+            return false;
+        }
+        
         $stmt->bind_param("iii", $plan_dzienny_id, $nieobecnosc_id, $nauczyciel_zastepujacy_id);
-        return $stmt->execute();
+        
+        $result = $stmt->execute();
+        if (!$result) {
+            error_log("SUBSTITUTE_ERROR: Failed to create substitution: " . $stmt->error);
+        }
+        
+        $stmt->close();
+        return $result;
     }
 
     private function aktualizujPlanDzienny($id, $oryg_nauczyciel_id, $nowy_nauczyciel_id)
     {
+        // Input validation
+        if (!is_numeric($id) || $id <= 0 ||
+            !is_numeric($oryg_nauczyciel_id) || $oryg_nauczyciel_id <= 0 ||
+            !is_numeric($nowy_nauczyciel_id) || $nowy_nauczyciel_id <= 0) {
+            error_log("SUBSTITUTE_ERROR: Invalid parameters for plan update");
+            return false;
+        }
+
         $stmt = $this->conn->prepare("
             UPDATE plan_dzienny
             SET czy_zastepstwo = 1,
@@ -370,8 +461,21 @@ class GeneratorZastepstw
                 nauczyciel_id = ?
             WHERE id = ?
         ");
+        
+        if (!$stmt) {
+            error_log("SUBSTITUTE_ERROR: Failed to prepare plan update query: " . $this->conn->error);
+            return false;
+        }
+        
         $stmt->bind_param("iii", $oryg_nauczyciel_id, $nowy_nauczyciel_id, $id);
-        $stmt->execute();
+        
+        $result = $stmt->execute();
+        if (!$result) {
+            error_log("SUBSTITUTE_ERROR: Failed to update plan: " . $stmt->error);
+        }
+        
+        $stmt->close();
+        return $result;
     }
 
     public function usunZastepstwa($nieobecnosc_id)

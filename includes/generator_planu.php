@@ -163,14 +163,23 @@ class GeneratorPlanu {
                 $sala_nauczyciel_exists = $row_sala_n && $row_sala_n['cnt'] > 0;
                 $stmt_sala_n->close();
 
-                // Sprawdź czy istnieje jakakolwiek sala
-                $any_sala = $this->conn->query("SELECT COUNT(*) as cnt FROM sale");
-                if (!$any_sala) {
+                // Sprawdź czy istnieje jakakolwiek sala - FIXED: Added proper error handling
+                $stmt_any_sala = $this->conn->prepare("SELECT COUNT(*) as cnt FROM sale");
+                if (!$stmt_any_sala) {
                     $this->validation_errors[] = "Błąd bazy danych sprawdzania dostępnych sal: " . $this->conn->error;
                     continue;
                 }
-                $row_any_sala = $any_sala->fetch_assoc();
+                
+                if (!$stmt_any_sala->execute()) {
+                    $this->validation_errors[] = "Błąd wykonania zapytania sprawdzania dostępnych sal: " . $stmt_any_sala->error;
+                    $stmt_any_sala->close();
+                    continue;
+                }
+                
+                $result_any_sala = $stmt_any_sala->get_result();
+                $row_any_sala = $result_any_sala->fetch_assoc();
                 $sala_any_exists = $row_any_sala && $row_any_sala['cnt'] > 0;
+                $stmt_any_sala->close();
 
                 if (!$sala_exists && !$sala_nauczyciel_exists && !$sala_any_exists) {
                     $this->validation_errors[] = "Klasa $klasa_nazwa: przedmiot '$przedmiot_nazwa' - brak dostępnych sal";
@@ -931,17 +940,30 @@ class GeneratorPlanu {
      * Attempts to swap lessons between different classes to resolve conflicts
      */
     private function probaSwapMiedzyKlasami($klasa_id_target, $dzien_target, $lekcja_nr_target) {
-        // Get all classes
-        $klasy_result = $this->conn->query("SELECT id FROM klasy WHERE id != $klasa_id_target");
+        // Get all classes - FIXED SQL Injection
+        $stmt = $this->conn->prepare("SELECT id FROM klasy WHERE id != ?");
+        if (!$stmt) {
+            error_log("Błąd przygotowania zapytania probaSwapMiedzyKlasami: " . $this->conn->error);
+            return false;
+        }
+        $stmt->bind_param("i", $klasa_id_target);
+        if (!$stmt->execute()) {
+            error_log("Błąd wykonania zapytania probaSwapMiedzyKlasami: " . $stmt->error);
+            $stmt->close();
+            return false;
+        }
+        $klasy_result = $stmt->get_result();
         
         if (!$klasy_result) {
+            $stmt->close();
             return false;
         }
         
         $swap_attempts = 0;
         $max_swap_attempts = 50; // Limit to prevent infinite loops
         
-        while ($klasa_source = $klasy_result->fetch_assoc() && $swap_attempts < $max_swap_attempts) {
+        // FIXED: Proper while loop condition
+        while (($klasa_source = $klasy_result->fetch_assoc()) !== false && $swap_attempts < $max_swap_attempts) {
             $klasa_id_source = $klasa_source['id'];
             $swap_attempts++;
             
@@ -970,6 +992,7 @@ class GeneratorPlanu {
             }
         }
         
+        $stmt->close();
         return false;
     }
 
