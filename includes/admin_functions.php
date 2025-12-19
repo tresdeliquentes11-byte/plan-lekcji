@@ -60,17 +60,18 @@ function zarzadzaj_sesja($uzytkownik_id, $akcja = 'login') {
         error_log("[DIAGNOSTYKA] Stan sesji PRZED aktualizacją activity: " . print_r($before_update, true));
         $check_stmt->close();
         
-        // Poprawione: użyj UTC_TIMESTAMP() zamiast CURRENT_TIMESTAMP dla spójności
-        $stmt = $conn->prepare("UPDATE sesje_uzytkownikow SET ostatnia_aktywnosc = UTC_TIMESTAMP() WHERE session_id = ? AND aktywna = 1");
+        // Poprawione: użyj NOW() zamiast CURRENT_TIMESTAMP dla spójności (UTC_TIMESTAMP może nie być wspierane)
+        $stmt = $conn->prepare("UPDATE sesje_uzytkownikow SET ostatnia_aktywnosc = NOW() WHERE session_id = ? AND aktywna = 1");
         $stmt->bind_param("s", $session_id);
-        $affected_rows = $stmt->execute();
-        error_log("[DIAGNOSTYKA] Zapytanie UPDATE activity wykonane, affected_rows: " . $stmt->affected_rows);
+        $stmt->execute();
+        $affected_rows = $stmt->affected_rows; // Zapisz affected_rows przed zamknięciem
+        error_log("[DIAGNOSTYKA] Zapytanie UPDATE activity wykonane, affected_rows: " . $affected_rows);
         $stmt->close();
         
         // Jeśli nie znaleziono aktywnej sesji, spróbuj utworzyć nową
-        if ($stmt->affected_rows == 0 && $before_update && $before_update['aktywna'] == 0) {
+        if ($affected_rows == 0 && $before_update && $before_update['aktywna'] == 0) {
             error_log("[DIAGNOSTYKA] Sesja była nieaktywna, próbuję reaktywować");
-            $reactivate_stmt = $conn->prepare("UPDATE sesje_uzytkownikow SET aktywna = 1, ostatnia_aktywnosc = UTC_TIMESTAMP() WHERE session_id = ?");
+            $reactivate_stmt = $conn->prepare("UPDATE sesje_uzytkownikow SET aktywna = 1, ostatnia_aktywnosc = NOW() WHERE session_id = ?");
             $reactivate_stmt->bind_param("s", $session_id);
             $reactivate_stmt->execute();
             error_log("[DIAGNOSTYKA] Reaktywacja sesji, affected_rows: " . $reactivate_stmt->affected_rows);
@@ -100,11 +101,11 @@ function wyczysc_nieaktywne_sesje() {
     
     // Poprawione: użyj UTC_TIMESTAMP() dla spójności z resztą systemu
     // Sprawdź które sesje zostaną oznaczone jako nieaktywne
-    $to_deactivate_result = $conn->query("SELECT COUNT(*) as to_deactivate FROM sesje_uzytkownikow WHERE ostatnia_aktywnosc < DATE_SUB(UTC_TIMESTAMP(), INTERVAL 30 MINUTE) AND aktywna = 1");
+    $to_deactivate_result = $conn->query("SELECT COUNT(*) as to_deactivate FROM sesje_uzytkownikow WHERE ostatnia_aktywnosc < DATE_SUB(NOW(), INTERVAL 30 MINUTE) AND aktywna = 1");
     $to_deactivate = $to_deactivate_result->fetch_assoc();
     error_log("[DIAGNOSTYKA] Sesje do deaktywacji: " . $to_deactivate['to_deactivate']);
     
-    $result = $conn->query("UPDATE sesje_uzytkownikow SET aktywna = 0 WHERE ostatnia_aktywnosc < DATE_SUB(UTC_TIMESTAMP(), INTERVAL 30 MINUTE) AND aktywna = 1");
+    $result = $conn->query("UPDATE sesje_uzytkownikow SET aktywna = 0 WHERE ostatnia_aktywnosc < DATE_SUB(NOW(), INTERVAL 30 MINUTE) AND aktywna = 1");
     error_log("[DIAGNOSTYKA] Zapytanie UPDATE czyszczenia wykonane, affected_rows: " . $conn->affected_rows);
     
     // Diagnostyka - sprawdź stan po czyszczeniu
@@ -469,11 +470,12 @@ function pobierz_liste_aktywnych_uzytkownikow() {
     error_log("[DIAGNOSTYKA] Rozpoczynam pobieranie listy aktywnych użytkowników");
     wyczysc_nieaktywne_sesje();
 
-    // Poprawione: użyj UTC_TIMESTAMP() dla spójności i dodatkowe filtry
+    // Poprawione: użyj NOW() i obliczaj różnicę w minutach
     $sql = "
         SELECT u.id, u.login, u.imie, u.nazwisko, u.typ,
                su.ip_address, su.ostatnia_aktywnosc, su.data_logowania,
-               TIMESTAMPDIFF(MINUTE, su.ostatnia_aktywnosc, UTC_TIMESTAMP()) as minuty_od_aktywnosci
+               TIMESTAMPDIFF(MINUTE, su.ostatnia_aktywnosc, NOW()) as minuty_od_aktywnosci,
+               TIMESTAMPDIFF(SECOND, su.data_logowania, NOW()) as sekundy_sesji
         FROM sesje_uzytkownikow su
         JOIN uzytkownicy u ON su.uzytkownik_id = u.id
         WHERE su.aktywna = 1
@@ -487,7 +489,7 @@ function pobierz_liste_aktywnych_uzytkownikow() {
     
     error_log("[DIAGNOSTYKA] Znaleziono " . count($sessions) . " aktywnych sesji");
     foreach ($sessions as $session) {
-        error_log("[DIAGNOSTYKA] Sesja: Użytkownik " . $session['login'] . " (ID: " . $session['id'] . "), Ostatnia aktywność: " . $session['ostatnia_aktywnosc'] . ", Minut temu: " . $session['minuty_od_aktywnosci']);
+        error_log("[DIAGNOSTYKA] Sesja: Użytkownik " . $session['login'] . " (ID: " . $session['id'] . "), Ostatnia aktywność: " . $session['ostatnia_aktywnosc'] . ", Minut temu: " . $session['minuty_od_aktywnosci'] . ", Sekund sesji: " . $session['sekundy_sesji']);
     }
 
     return $sessions;

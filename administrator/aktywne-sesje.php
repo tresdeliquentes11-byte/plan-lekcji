@@ -9,9 +9,17 @@ error_log("[DIAGNOSTYKA] Czas serwera PHP: " . $server_time);
 
 // Sprawdź czas bazy danych
 global $conn;
-$db_time_result = $conn->query("SELECT NOW() as db_time, UTC_TIMESTAMP() as utc_time");
-$db_time = $db_time_result->fetch_assoc();
-error_log("[DIAGNOSTYKA] Czas bazy danych: " . $db_time['db_time'] . ", UTC: " . $db_time['utc_time']);
+try {
+    $db_time_result = $conn->query("SELECT NOW() as db_time, UTC_TIMESTAMP() as utc_time");
+    $db_time = $db_time_result->fetch_assoc();
+    error_log("[DIAGNOSTYKA] Czas bazy danych: " . $db_time['db_time'] . ", UTC: " . $db_time['utc_time']);
+} catch (Exception $e) {
+    error_log("[DIAGNOSTYKA] Błąd zapytania czasowego: " . $e->getMessage());
+    // Fallback - użyj tylko NOW() jeśli UTC_TIMESTAMP nie działa
+    $db_time_result = $conn->query("SELECT NOW() as db_time");
+    $db_time = $db_time_result->fetch_assoc();
+    error_log("[DIAGNOSTYKA] Czas bazy danych (fallback): " . $db_time['db_time']);
+}
 
 zarzadzaj_sesja($_SESSION['user_id'], 'activity');
 
@@ -144,16 +152,16 @@ error_log("[DIAGNOSTYKA] Zwrócone aktywne sesje: " . count($aktywne_sesje));
                                             </td>
                                             <td>
                                                 <?php
-                                                // Poprawione formatowanie daty z uwzględnieniem strefy czasowej
-                                                $dataLogowania = new DateTime($sesja['data_logowania'], new DateTimeZone('UTC'));
+                                                // Poprawione: baza używa czasu lokalnego (Europe/Warsaw), nie UTC
+                                                $dataLogowania = new DateTime($sesja['data_logowania']);
                                                 $dataLogowania->setTimezone(new DateTimeZone('Europe/Warsaw'));
                                                 echo $dataLogowania->format('d.m.Y H:i:s');
                                                 ?>
                                             </td>
                                             <td>
                                                 <?php
-                                                // Poprawione obliczenia czasu z uwzględnieniem strefy czasowej
-                                                $ostatnia = new DateTime($sesja['ostatnia_aktywnosc'], new DateTimeZone('UTC'));
+                                                // Poprawione: baza używa czasu lokalnego, nie UTC
+                                                $ostatnia = new DateTime($sesja['ostatnia_aktywnosc']);
                                                 $ostatnia->setTimezone(new DateTimeZone('Europe/Warsaw'));
                                                 $teraz = new DateTime('now', new DateTimeZone('Europe/Warsaw'));
                                                 $roznica = $teraz->getTimestamp() - $ostatnia->getTimestamp();
@@ -176,12 +184,19 @@ error_log("[DIAGNOSTYKA] Zwrócone aktywne sesje: " . count($aktywne_sesje));
                                             </td>
                                             <td>
                                                 <?php
-                                                // Poprawione obliczenia czasu sesji z uwzględnieniem strefy czasowej
-                                                $dataLogowania = new DateTime($sesja['data_logowania'], new DateTimeZone('UTC'));
+                                                // Poprawione: baza używa czasu lokalnego, nie UTC
+                                                $dataLogowania = new DateTime($sesja['data_logowania']);
                                                 $dataLogowania->setTimezone(new DateTimeZone('Europe/Warsaw'));
                                                 $czasSesji = $teraz->getTimestamp() - $dataLogowania->getTimestamp();
                                                 $godziny = floor($czasSesji / 3600);
                                                 $minuty = floor(($czasSesji % 3600) / 60);
+
+                                                // Zapewnij nieujemne wartości
+                                                if ($czasSesji < 0) {
+                                                    $czasSesji = 0;
+                                                    $godziny = 0;
+                                                    $minuty = 0;
+                                                }
 
                                                 if ($godziny > 0) {
                                                     echo $godziny . 'h ' . $minuty . 'min';
