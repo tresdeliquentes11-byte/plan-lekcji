@@ -41,9 +41,8 @@ $tydzien_offset = $_GET['tydzien'] ?? 0;
 $current_date = date('Y-m-d');
 $current_week_monday = date('Y-m-d', strtotime('monday this week'));
 
-// Ogranicz nawigację tylko do poprzedniego i następnego tygodnia względem bieżącego
-if ($tydzien_offset < -1) $tydzien_offset = -1;
-if ($tydzien_offset > 1) $tydzien_offset = 1;
+// Ogranicz nawigację - można cofać się tylko do bieżącego tygodnia (offset 0), ale nie wcześniej
+if ($tydzien_offset < 0) $tydzien_offset = 0; // Minimalnie to bieżący tydzień
 
 $poczatek_tygodnia = date('Y-m-d', strtotime($current_week_monday . ' +' . ($tydzien_offset * 7) . ' days'));
 $koniec_tygodnia = date('Y-m-d', strtotime($poczatek_tygodnia . ' +4 days')); // Poniedziałek + 4 dni = Piątek
@@ -127,7 +126,8 @@ $dni_tygodnia = [
                 
                 <?php if ($klasa_id): ?>
                     <div class="week-navigation">
-                        <?php if ($tydzien_offset > -1): ?>
+                        <!-- Przycisk "Poprzedni tydzień" - aktywny tylko jeśli nie jesteśmy w bieżącym tygodniu -->
+                        <?php if ($tydzien_offset > 0): ?>
                             <a href="?klasa_id=<?php echo $klasa_id; ?>&tydzien=<?php echo $tydzien_offset - 1; ?>" class="btn btn-secondary">← Poprzedni tydzień</a>
                         <?php else: ?>
                             <span class="btn btn-secondary disabled">← Poprzedni tydzień</span>
@@ -137,20 +137,15 @@ $dni_tygodnia = [
                             <?php
                             if ($tydzien_offset == 0) {
                                 echo 'Bieżący tydzień';
-                            } elseif ($tydzien_offset == -1) {
-                                echo 'Poprzedni tydzień';
-                            } elseif ($tydzien_offset == 1) {
-                                echo 'Następny tydzień';
+                            } else {
+                                echo 'Tydzień +' . $tydzien_offset;
                             }
                             ?><br>
                             <small><?php echo formatuj_date($poczatek_tygodnia); ?> - <?php echo formatuj_date($koniec_tygodnia); ?></small>
                         </span>
                         
-                        <?php if ($tydzien_offset < 1): ?>
-                            <a href="?klasa_id=<?php echo $klasa_id; ?>&tydzien=<?php echo $tydzien_offset + 1; ?>" class="btn btn-secondary">Następny tydzień →</a>
-                        <?php else: ?>
-                            <span class="btn btn-secondary disabled">Następny tydzień →</span>
-                        <?php endif; ?>
+                        <!-- Przycisk "Następny tydzień" - zawsze aktywny dla nieograniczonej przyszłości -->
+                        <a href="?klasa_id=<?php echo $klasa_id; ?>&tydzien=<?php echo $tydzien_offset + 1; ?>" class="btn btn-secondary">Następny tydzień →</a>
                     </div>
                     <script>
                         console.log('Plan podglad - klasa_id: <?php echo $klasa_id; ?>, tydzien_offset: <?php echo $tydzien_offset; ?>');
