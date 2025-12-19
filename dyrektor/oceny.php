@@ -143,6 +143,7 @@ if ($wybrana_klasa_id) {
             padding: 15px;
             text-align: left;
             border-bottom: 1px solid #e9ecef;
+            color: #2e2e2eff;
         }
 
         .ranking-table th {
