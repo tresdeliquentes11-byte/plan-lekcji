@@ -37,10 +37,11 @@ for ($i = 1; $i < $liczba_lekcji; $i++) {
 $klasa_id = $_GET['klasa_id'] ?? null;
 $tydzien_offset = $_GET['tydzien'] ?? 0;
 
-// Oblicz daty tygodnia
+// Oblicz daty tygodnia - używamy bardziej przewidywalnej logiki
 $current_date = date('Y-m-d');
-$poczatek_tygodnia = date('Y-m-d', strtotime("monday this week +" . ($tydzien_offset * 7) . " days"));
-$koniec_tygodnia = date('Y-m-d', strtotime("friday this week +" . ($tydzien_offset * 7) . " days"));
+$current_monday = date('Y-m-d', strtotime('monday this week'));
+$poczatek_tygodnia = date('Y-m-d', strtotime($current_monday . ' +' . ($tydzien_offset * 7) . ' days'));
+$koniec_tygodnia = date('Y-m-d', strtotime($poczatek_tygodnia . ' +4 days')); // Poniedziałek + 4 dni = Piątek
 
 // Pobierz klasy
 $klasy = $conn->query("SELECT * FROM klasy ORDER BY nazwa");
@@ -130,6 +131,7 @@ $dni_tygodnia = [
                     <script>
                         console.log('Plan podglad - klasa_id: <?php echo $klasa_id; ?>, tydzien_offset: <?php echo $tydzien_offset; ?>');
                         console.log('Początek tygodnia: <?php echo $poczatek_tygodnia; ?>, Koniec tygodnia: <?php echo $koniec_tygodnia; ?>');
+                        console.log('Current monday: <?php echo $current_monday; ?>, Current date: <?php echo $current_date; ?>');
                     </script>
                 <?php endif; ?>
             </div>
