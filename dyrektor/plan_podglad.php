@@ -37,10 +37,15 @@ for ($i = 1; $i < $liczba_lekcji; $i++) {
 $klasa_id = $_GET['klasa_id'] ?? null;
 $tydzien_offset = $_GET['tydzien'] ?? 0;
 
-// Oblicz daty tygodnia - używamy bardziej przewidywalnej logiki
+// Oblicz daty tygodnia - względem bieżącej daty użytkownika
 $current_date = date('Y-m-d');
-$current_monday = date('Y-m-d', strtotime('monday this week'));
-$poczatek_tygodnia = date('Y-m-d', strtotime($current_monday . ' +' . ($tydzien_offset * 7) . ' days'));
+$current_week_monday = date('Y-m-d', strtotime('monday this week'));
+
+// Ogranicz nawigację tylko do poprzedniego i następnego tygodnia względem bieżącego
+if ($tydzien_offset < -1) $tydzien_offset = -1;
+if ($tydzien_offset > 1) $tydzien_offset = 1;
+
+$poczatek_tygodnia = date('Y-m-d', strtotime($current_week_monday . ' +' . ($tydzien_offset * 7) . ' days'));
 $koniec_tygodnia = date('Y-m-d', strtotime($poczatek_tygodnia . ' +4 days')); // Poniedziałek + 4 dni = Piątek
 
 // Pobierz klasy
@@ -122,11 +127,30 @@ $dni_tygodnia = [
                 
                 <?php if ($klasa_id): ?>
                     <div class="week-navigation">
-                        <a href="?klasa_id=<?php echo $klasa_id; ?>&tydzien=<?php echo $tydzien_offset - 1; ?>" class="btn btn-secondary">← Poprzedni tydzień</a>
+                        <?php if ($tydzien_offset > -1): ?>
+                            <a href="?klasa_id=<?php echo $klasa_id; ?>&tydzien=<?php echo $tydzien_offset - 1; ?>" class="btn btn-secondary">← Poprzedni tydzień</a>
+                        <?php else: ?>
+                            <span class="btn btn-secondary disabled">← Poprzedni tydzień</span>
+                        <?php endif; ?>
+                        
                         <span class="current-week">
-                            <?php echo formatuj_date($poczatek_tygodnia); ?> - <?php echo formatuj_date($koniec_tygodnia); ?>
+                            <?php
+                            if ($tydzien_offset == 0) {
+                                echo 'Bieżący tydzień';
+                            } elseif ($tydzien_offset == -1) {
+                                echo 'Poprzedni tydzień';
+                            } elseif ($tydzien_offset == 1) {
+                                echo 'Następny tydzień';
+                            }
+                            ?><br>
+                            <small><?php echo formatuj_date($poczatek_tygodnia); ?> - <?php echo formatuj_date($koniec_tygodnia); ?></small>
                         </span>
-                        <a href="?klasa_id=<?php echo $klasa_id; ?>&tydzien=<?php echo $tydzien_offset + 1; ?>" class="btn btn-secondary">Następny tydzień →</a>
+                        
+                        <?php if ($tydzien_offset < 1): ?>
+                            <a href="?klasa_id=<?php echo $klasa_id; ?>&tydzien=<?php echo $tydzien_offset + 1; ?>" class="btn btn-secondary">Następny tydzień →</a>
+                        <?php else: ?>
+                            <span class="btn btn-secondary disabled">Następny tydzień →</span>
+                        <?php endif; ?>
                     </div>
                     <script>
                         console.log('Plan podglad - klasa_id: <?php echo $klasa_id; ?>, tydzien_offset: <?php echo $tydzien_offset; ?>');
