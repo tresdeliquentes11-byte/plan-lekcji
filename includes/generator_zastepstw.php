@@ -2,16 +2,20 @@
 require_once '../includes/config.php';
 require_once '../includes/dostepnosc_helpers.php';
 
-class GeneratorZastepstw {
+class GeneratorZastepstw
+{
     private $conn;
-    
-    public function __construct($conn) {
+    private $cache_plan = [];     // Cache for plan_dzienny structure [date][teacher_id] => [lessons...]
+    private $cache_subs = [];     // Cache for weekly substitutions count [week][teacher_id] => count
+
+    public function __construct($conn)
+    {
         $this->conn = $conn;
     }
-    
+
     // Sprawdzenie czy lekcja jest na początku lub końcu dnia dla klasy
-    private function czyLekcjaNaPoczatkuLubKoncuDnia($klasa_id, $data, $numer_lekcji) {
-        // Pobierz wszystkie lekcje klasy w tym dniu - używamy prepared statement
+    private function czyLekcjaNaPoczatkuLubKoncuDnia($klasa_id, $data, $numer_lekcji)
+    {
         $stmt = $this->conn->prepare("
             SELECT numer_lekcji
             FROM plan_dzienny
@@ -20,47 +24,117 @@ class GeneratorZastepstw {
             ORDER BY numer_lekcji
         ");
 
-        if (!$stmt) {
-            error_log("czyLekcjaNaPoczatkuLubKoncuDnia: Błąd przygotowania zapytania: " . $this->conn->error);
+        if (!$stmt)
             return false;
-        }
 
         $stmt->bind_param("is", $klasa_id, $data);
-
         if (!$stmt->execute()) {
-            error_log("czyLekcjaNaPoczatkuLubKoncuDnia: Błąd wykonania zapytania: " . $stmt->error);
             $stmt->close();
             return false;
         }
 
-        $lekcje_klasy = $stmt->get_result();
+        $result = $stmt->get_result();
         $stmt->close();
 
-        if ($lekcje_klasy->num_rows == 0) {
-            return false; // Brak lekcji w tym dniu
-        }
+        if ($result->num_rows == 0)
+            return false;
 
         $numery_lekcji = [];
-        while ($row = $lekcje_klasy->fetch_assoc()) {
+        while ($row = $result->fetch_assoc()) {
             $numery_lekcji[] = $row['numer_lekcji'];
         }
 
-        // Sprawdź czy to pierwsza lub ostatnia lekcja
         $pierwsza_lekcja = min($numery_lekcji);
         $ostatnia_lekcja = max($numery_lekcji);
 
         return ($numer_lekcji == $pierwsza_lekcja || $numer_lekcji == $ostatnia_lekcja);
     }
 
-    // Główna funkcja generująca zastępstwa dla nieobecności
-    public function generujZastepstwa($nieobecnosc_id) {
-        // Pobieramy dane nieobecności
+    // Load data for scoring optimizations
+    private function zaladujDaneDnia($data)
+    {
+        if (isset($this->cache_plan[$data]))
+            return;
+
+        // 1. Get all lessons for this day (for gaps and load calculation)
+        $this->cache_plan[$data] = [];
+        $stmt = $this->conn->prepare("SELECT nauczyciel_id, numer_lekcji FROM plan_dzienny WHERE data = ?");
+        $stmt->bind_param("s", $data);
+        if ($stmt->execute()) {
+            $res = $stmt->get_result();
+            while ($row = $res->fetch_assoc()) {
+                $this->cache_plan[$data][$row['nauczyciel_id']][] = $row['numer_lekcji'];
+            }
+        }
+        $stmt->close();
+    }
+
+    private function pobierzLiczbeZastepstwWTygodniu($nauczyciel_id, $data)
+    {
+        $week = date('W', strtotime($data));
+        $year = date('Y', strtotime($data));
+        $key = "$year-$week";
+
+        if (!isset($this->cache_subs[$key])) {
+            $this->cache_subs[$key] = [];
+            // Calculate start and end of week
+            $dto = new DateTime($data);
+            $dto->setISODate($year, $week);
+            $start = $dto->format('Y-m-d');
+            $dto->modify('+6 days');
+            $end = $dto->format('Y-m-d');
+
+            $stmt = $this->conn->prepare("
+                SELECT nauczyciel_zastepujacy_id, COUNT(*) as cnt 
+                FROM zastepstwa z
+                JOIN plan_dzienny pd ON z.plan_dzienny_id = pd.id
+                WHERE pd.data BETWEEN ? AND ?
+                GROUP BY nauczyciel_zastepujacy_id
+            ");
+            $stmt->bind_param("ss", $start, $end);
+            if ($stmt->execute()) {
+                $res = $stmt->get_result();
+                while ($row = $res->fetch_assoc()) {
+                    $this->cache_subs[$key][$row['nauczyciel_zastepujacy_id']] = $row['cnt'];
+                }
+            }
+            $stmt->close();
+        }
+
+        return $this->cache_subs[$key][$nauczyciel_id] ?? 0;
+    }
+
+    // Główna funkcja generująca zastępstwa
+    public function generujZastepstwa($nieobecnosc_id)
+    {
+        // Input validation
+        if (!is_numeric($nieobecnosc_id) || $nieobecnosc_id <= 0) {
+            error_log("SUBSTITUTE_ERROR: Invalid absence ID: $nieobecnosc_id");
+            return false;
+        }
+
+        error_log("SUBSTITUTE_DEBUG: Starting smart generation for absence ID: $nieobecnosc_id");
+
+        // Pobierz dane nieobecności
         $stmt = $this->conn->prepare("SELECT * FROM nieobecnosci WHERE id = ?");
+        if (!$stmt) {
+            error_log("SUBSTITUTE_ERROR: Failed to prepare absence query: " . $this->conn->error);
+            return false;
+        }
+        
         $stmt->bind_param("i", $nieobecnosc_id);
-        $stmt->execute();
-        $nieobecnosc = $stmt->get_result()->fetch_assoc();
+        if (!$stmt->execute()) {
+            error_log("SUBSTITUTE_ERROR: Failed to execute absence query: " . $stmt->error);
+            $stmt->close();
+            return false;
+        }
+        
+        $result = $stmt->get_result();
+        $nieobecnosc = $result->fetch_assoc();
+        $stmt->close();
 
         if (!$nieobecnosc) {
+            error_log("SUBSTITUTE_ERROR: Absence not found for ID: $nieobecnosc_id");
             return false;
         }
 
@@ -68,7 +142,7 @@ class GeneratorZastepstw {
         $data_od = $nieobecnosc['data_od'];
         $data_do = $nieobecnosc['data_do'];
 
-        // Pobieramy wszystkie lekcje nauczyciela w tym okresie - używamy prepared statement
+        // Pobierz lekcje do zastąpienia
         $stmt_lekcje = $this->conn->prepare("
             SELECT pd.*, p.nazwa as przedmiot_nazwa, k.nazwa as klasa_nazwa
             FROM plan_dzienny pd
@@ -82,79 +156,73 @@ class GeneratorZastepstw {
         ");
 
         if (!$stmt_lekcje) {
-            error_log("generujZastepstwa: Błąd przygotowania zapytania dla lekcji: " . $this->conn->error);
+            error_log("SUBSTITUTE_ERROR: Failed to prepare lessons query: " . $this->conn->error);
             return false;
         }
 
         $stmt_lekcje->bind_param("iss", $nauczyciel_id, $data_od, $data_do);
-
         if (!$stmt_lekcje->execute()) {
-            error_log("generujZastepstwa: Błąd wykonania zapytania dla lekcji: " . $stmt_lekcje->error);
+            error_log("SUBSTITUTE_ERROR: Failed to execute lessons query: " . $stmt_lekcje->error);
             $stmt_lekcje->close();
             return false;
         }
-
+        
         $lekcje = $stmt_lekcje->get_result();
-        $stmt_lekcje->close();
 
         $zastepstwa_utworzone = 0;
         $zastepstwa_niemozliwe = [];
         $zastepstwa_pominiete = [];
 
-        while ($lekcja = $lekcje->fetch_assoc()) {
-            // Priorytet 1: Szukamy nauczyciela tego samego przedmiotu
-            $nauczyciel_zastepujacy = $this->znajdzNauczycielaZastepujacego(
-                $lekcja['przedmiot_id'],
-                $lekcja['data'],
-                $lekcja['numer_lekcji'],
-                $nauczyciel_id
-            );
-
-            // Priorytet 2: Jeśli nie znaleziono, szukamy nauczyciela innego przedmiotu
-            if (!$nauczyciel_zastepujacy) {
-                $nauczyciel_zastepujacy = $this->znajdzNauczycielaInnegoPremiotu(
-                    $lekcja['klasa_id'],
-                    $lekcja['przedmiot_id'],
-                    $lekcja['data'],
-                    $lekcja['numer_lekcji'],
-                    $nauczyciel_id
-                );
+        // Cache teacher subjects map
+        $nauczyciel_przedmioty = [];
+        $kp_res = $this->conn->query("SELECT nauczyciel_id, przedmiot_id FROM nauczyciel_przedmioty");
+        if ($kp_res) {
+            while ($row = $kp_res->fetch_assoc()) {
+                $nauczyciel_przedmioty[$row['nauczyciel_id']][] = $row['przedmiot_id'];
             }
+            $kp_res->free();
+        }
 
-            if ($nauczyciel_zastepujacy) {
-                // Znaleziono nauczyciela - tworzymy zastępstwo dla każdej lekcji (nawet na początku/końcu dnia)
-                $this->utworzZastepstwo(
-                    $lekcja['id'],
-                    $nieobecnosc_id,
-                    $nauczyciel_zastepujacy['id']
-                );
+        // Cache teachers teaching classes map
+        $klasa_nauczyciele = [];
+        $kn_res = $this->conn->query("SELECT klasa_id, nauczyciel_id FROM klasa_przedmioty");
+        if ($kn_res) {
+            while ($row = $kn_res->fetch_assoc()) {
+                $klasa_nauczyciele[$row['klasa_id']][] = $row['nauczyciel_id'];
+            }
+            $kn_res->free();
+        }
 
-                // Aktualizujemy plan dzienny - używamy prepared statement
-                $stmt_update = $this->conn->prepare("
-                    UPDATE plan_dzienny
-                    SET czy_zastepstwo = 1,
-                        oryginalny_nauczyciel_id = ?,
-                        nauczyciel_id = ?
-                    WHERE id = ?
-                ");
+        while ($lekcja = $lekcje->fetch_assoc()) {
+            $this->zaladujDaneDnia($lekcja['data']);
 
-                if ($stmt_update) {
-                    $stmt_update->bind_param("iii", $nauczyciel_id, $nauczyciel_zastepujacy['id'], $lekcja['id']);
+            $kandydat = $this->znajdzNajlepszegoKandydata($lekcja, $nauczyciel_id, $nauczyciel_przedmioty, $klasa_nauczyciele);
 
-                    if (!$stmt_update->execute()) {
-                        error_log("generujZastepstwa: Błąd aktualizacji planu dziennego: " . $stmt_update->error);
-                    }
+            if ($kandydat) {
+                // Utwórz zastępstwo
+                $this->utworzZastepstwo($lekcja['id'], $nieobecnosc_id, $kandydat['id']);
 
-                    $stmt_update->close();
+                // Aktualizuj plan
+                $this->aktualizujPlanDzienny($lekcja['id'], $nauczyciel_id, $kandydat['id']);
+
+                // Update cache locally so next iteration knows about this load
+                $this->cache_plan[$lekcja['data']][$kandydat['id']][] = $lekcja['numer_lekcji'];
+                // Update weekly subs cache (approximate, or just let it be slightly stale for batch)
+                // Better to update to avoid overloading same person in one batch
+                $week = date('W', strtotime($lekcja['data']));
+                $year = date('Y', strtotime($lekcja['data']));
+                $key = "$year-$week";
+                if (isset($this->cache_subs[$key][$kandydat['id']])) {
+                    $this->cache_subs[$key][$kandydat['id']]++;
                 } else {
-                    error_log("generujZastepstwa: Błąd przygotowania zapytania aktualizacji: " . $this->conn->error);
+                    $this->cache_subs[$key][$kandydat['id']] = 1;
                 }
 
                 $zastepstwa_utworzone++;
+                error_log("SUBSTITUTE_SUCCESS: Assigned Teacher {$kandydat['id']} for Lesson {$lekcja['id']}");
             } else {
-                // Nie znaleziono nauczyciela - sprawdź czy można pominąć
+                // Fallback analysis
                 if ($this->czyLekcjaNaPoczatkuLubKoncuDnia($lekcja['klasa_id'], $lekcja['data'], $lekcja['numer_lekcji'])) {
-                    // Lekcja na początku/końcu dnia - można pominąć (uczniowie przyjdą później/wyjdą wcześniej)
                     $zastepstwa_pominiete[] = [
                         'data' => $lekcja['data'],
                         'lekcja' => $lekcja['numer_lekcji'],
@@ -163,7 +231,6 @@ class GeneratorZastepstw {
                         'powod' => 'pierwsza_lub_ostatnia_lekcja_brak_nauczyciela'
                     ];
                 } else {
-                    // Lekcja w środku dnia - oznaczamy jako niemożliwe
                     $zastepstwa_niemozliwe[] = [
                         'data' => $lekcja['data'],
                         'lekcja' => $lekcja['numer_lekcji'],
@@ -174,246 +241,266 @@ class GeneratorZastepstw {
             }
         }
 
+        // Clean up resources
+        $stmt_lekcje->close();
+        
+        // Clean cache periodically
+        $this->cleanupCache();
+
         return [
             'utworzone' => $zastepstwa_utworzone,
             'niemozliwe' => $zastepstwa_niemozliwe,
             'pominiete' => $zastepstwa_pominiete
         ];
     }
-    
-    // Znajdowanie nauczyciela zastępującego
-    private function znajdzNauczycielaZastepujacego($przedmiot_id, $data, $numer_lekcji, $nieobecny_nauczyciel_id) {
-        // Szukamy nauczycieli, którzy:
-        // 1. Mogą uczyć tego przedmiotu
-        // 2. Są wolni w tym czasie
-        // 3. Nie są nieobecni
-        // 4. Są dostępni w tych godzinach (nowe!)
 
-        // Najpierw pobierz dzień tygodnia dla daty
-        $timestamp = strtotime($data);
-        $dzien_tygodnia_nr = date('N', $timestamp); // 1-7 (poniedziałek-niedziela)
-        $dni_mapping = [
-            1 => 'poniedzialek',
-            2 => 'wtorek',
-            3 => 'sroda',
-            4 => 'czwartek',
-            5 => 'piatek'
-        ];
-        $dzien_nazwa = $dni_mapping[$dzien_tygodnia_nr] ?? null;
-
-        // Używamy prepared statement
-        $stmt = $this->conn->prepare("
-            SELECT n.id, u.imie, u.nazwisko
-            FROM nauczyciele n
-            JOIN uzytkownicy u ON n.uzytkownik_id = u.id
-            JOIN nauczyciel_przedmioty np ON n.id = np.nauczyciel_id
-            WHERE np.przedmiot_id = ?
-            AND n.id != ?
-            AND n.id NOT IN (
-                -- Nauczyciele zajęci w tym czasie
-                SELECT nauczyciel_id
-                FROM plan_dzienny
-                WHERE data = ?
-                AND numer_lekcji = ?
-            )
-            AND n.id NOT IN (
-                -- Nauczyciele nieobecni
-                SELECT nauczyciel_id
-                FROM nieobecnosci
-                WHERE ? BETWEEN data_od AND data_do
-            )
-        ");
-
-        if (!$stmt) {
-            error_log("znajdzNauczycielaZastepujacego: Błąd przygotowania zapytania: " . $this->conn->error);
-            return null;
+    /**
+     * Clean up cache to prevent memory issues
+     */
+    private function cleanupCache() {
+        $max_cache_size = 1000;
+        
+        // Clean plan cache if too large
+        if (count($this->cache_plan) > $max_cache_size) {
+            $this->cache_plan = array_slice($this->cache_plan, -$max_cache_size, null, true);
         }
-
-        $stmt->bind_param("iisis", $przedmiot_id, $nieobecny_nauczyciel_id, $data, $numer_lekcji, $data);
-
-        if (!$stmt->execute()) {
-            error_log("znajdzNauczycielaZastepujacego: Błąd wykonania zapytania: " . $stmt->error);
-            $stmt->close();
-            return null;
+        
+        // Clean substitution cache if too large
+        if (count($this->cache_subs) > $max_cache_size) {
+            $this->cache_subs = array_slice($this->cache_subs, -$max_cache_size, null, true);
         }
+    }
 
-        $result = $stmt->get_result();
-        $stmt->close();
-
-        // Sprawdź każdego kandydata pod kątem dostępności w godzinach
-        while ($nauczyciel = $result->fetch_assoc()) {
-            $jest_dostepny = sprawdz_dostepnosc_nauczyciela_w_czasie(
-                $nauczyciel['id'],
-                $dzien_nazwa,
-                $data,
-                $numer_lekcji,
-                $this->conn
-            );
-
-            if ($jest_dostepny) {
-                return $nauczyciel; // Znaleziono dostępnego nauczyciela
+    private function znajdzNajlepszegoKandydata($lekcja, $absent_teacher_id, $map_subjects, $map_class_teachers)
+    {
+        // 1. Get all potential candidates (exclude absent one)
+        // We'll fetch basic info for all teachers, then filter/score
+        static $all_teachers = null;
+        if ($all_teachers === null) {
+            $res = $this->conn->query("SELECT n.id, u.imie, u.nazwisko FROM nauczyciele n JOIN uzytkownicy u ON n.uzytkownik_id = u.id");
+            $all_teachers = [];
+            if ($res) {
+                while ($row = $res->fetch_assoc()) {
+                    $all_teachers[] = $row;
+                }
+                $res->free();
             }
         }
 
-        return null; // Nie znaleziono żadnego dostępnego nauczyciela
-    }
+        $best_candidate = null;
+        $best_score = -1000;
 
-    // Znajdowanie nauczyciela innego przedmiotu (fallback)
-    private function znajdzNauczycielaInnegoPremiotu($klasa_id, $oryginalny_przedmiot_id, $data, $numer_lekcji, $nieobecny_nauczyciel_id) {
-        // Najpierw pobierz dzień tygodnia dla daty
-        $timestamp = strtotime($data);
-        $dzien_tygodnia_nr = date('N', $timestamp); // 1-7 (poniedziałek-niedziela)
-        $dni_mapping = [
-            1 => 'poniedzialek',
-            2 => 'wtorek',
-            3 => 'sroda',
-            4 => 'czwartek',
-            5 => 'piatek'
-        ];
-        $dzien_nazwa = $dni_mapping[$dzien_tygodnia_nr] ?? null;
+        $data = $lekcja['data'];
+        $lekcja_nr = $lekcja['numer_lekcji'];
 
-        // Szukamy nauczycieli, którzy:
-        // 1. Uczą INNY przedmiot niż oryginalny
-        // 2. Uczą tę klasę (są w klasa_przedmioty dla tej klasy)
-        // 3. Są wolni w tym czasie
-        // 4. Nie są nieobecni
-        // 5. Są dostępni w tych godzinach
+        // Absence check for candidates
+        $absent_ids = $this->pobierzIdNieobecnychNauczycieli($data);
 
-        // Używamy prepared statement
-        $stmt = $this->conn->prepare("
-            SELECT DISTINCT n.id, u.imie, u.nazwisko, p.nazwa as przedmiot_nazwa
-            FROM nauczyciele n
-            JOIN uzytkownicy u ON n.uzytkownik_id = u.id
-            JOIN klasa_przedmioty kp ON n.id = kp.nauczyciel_id
-            JOIN przedmioty p ON kp.przedmiot_id = p.id
-            WHERE kp.klasa_id = ?
-            AND kp.przedmiot_id != ?
-            AND n.id != ?
-            AND n.id NOT IN (
-                -- Nauczyciele zajęci w tym czasie
-                SELECT nauczyciel_id
-                FROM plan_dzienny
-                WHERE data = ?
-                AND numer_lekcji = ?
-            )
-            AND n.id NOT IN (
-                -- Nauczyciele nieobecni
-                SELECT nauczyciel_id
-                FROM nieobecnosci
-                WHERE ? BETWEEN data_od AND data_do
-            )
-        ");
+        foreach ($all_teachers as $teacher) {
+            $tid = $teacher['id'];
+            if ($tid == $absent_teacher_id)
+                continue;
+            if (in_array($tid, $absent_ids))
+                continue;
 
-        if (!$stmt) {
-            error_log("znajdzNauczycielaInnegoPremiotu: Błąd przygotowania zapytania: " . $this->conn->error);
-            return null;
-        }
+            // Check availability (hours)
+            $dzien_tygodnia = $this->getDzienTygodnia($data);
+            if (!sprawdz_dostepnosc_nauczyciela_w_czasie($tid, $dzien_tygodnia, $data, $lekcja_nr, $this->conn)) {
+                continue;
+            }
 
-        $stmt->bind_param("iiiisi", $klasa_id, $oryginalny_przedmiot_id, $nieobecny_nauczyciel_id, $data, $numer_lekcji, $data);
+            // Check if busy (has lesson)
+            $lessons_today = $this->cache_plan[$data][$tid] ?? [];
+            if (in_array($lekcja_nr, $lessons_today)) {
+                continue; // Busy
+            }
 
-        if (!$stmt->execute()) {
-            error_log("znajdzNauczycielaInnegoPremiotu: Błąd wykonania zapytania: " . $stmt->error);
-            $stmt->close();
-            return null;
-        }
+            // --- SCORING ---
+            $score = 0;
 
-        $result = $stmt->get_result();
-        $stmt->close();
+            // 1. Competence
+            $teaches_subject = in_array($lekcja['przedmiot_id'], $map_subjects[$tid] ?? []);
+            $teaches_class = in_array($tid, $map_class_teachers[$lekcja['klasa_id']] ?? []);
 
-        // Sprawdź każdego kandydata pod kątem dostępności w godzinach
-        while ($nauczyciel = $result->fetch_assoc()) {
-            $jest_dostepny = sprawdz_dostepnosc_nauczyciela_w_czasie(
-                $nauczyciel['id'],
-                $dzien_nazwa,
-                $data,
-                $numer_lekcji,
-                $this->conn
-            );
+            if ($teaches_subject) {
+                $score += 100;
+            } elseif ($teaches_class) {
+                $score += 30; // Knows the class
+            } else {
+                $score += 10; // Just supervision
+            }
 
-            if ($jest_dostepny) {
-                return $nauczyciel; // Znaleziono dostępnego nauczyciela
+            // 2. Load Balancing
+            $lessons_count = count($lessons_today);
+            $score -= ($lessons_count * 5); // Fatigue
+
+            $subs_week = $this->pobierzLiczbeZastepstwWTygodniu($tid, $data);
+            $score -= ($subs_week * 10); // Fairness
+
+            // 3. Gaps (Okienka)
+            // If assigning this lesson creates a gap
+            $temp_lessons = $lessons_today;
+            $temp_lessons[] = $lekcja_nr;
+            sort($temp_lessons);
+
+            $gaps_before = $this->policzOkienka($lessons_today);
+            $gaps_after = $this->policzOkienka($temp_lessons);
+
+            if ($gaps_after > $gaps_before) {
+                // Check if the gap is really bad? 
+                // Any created gap is bad.
+                $score -= 50;
+            } elseif ($gaps_after < $gaps_before) {
+                // Should not happen unless we are filling a gap
+                $score += 20;
+            } else {
+                // Gaps unchanged. If we filled a gap, we haven't increased gaps.
+                // Wait, policzOkienka counts TOTAL gaps.
+                // If total gaps stays same, it might mean we appended to end or start.
+                // If we filled a gap, total gaps decreases?
+                // Example: [1, 3], gap count = 1 (2 is missing).
+                // Add 2 -> [1, 2, 3], gap count = 0. Decreases.
+                // Example: [1, 2]. Add 4. [1, 2, 4]. Gap count = 1. Increases.
+                // Logic holds.
+            }
+
+            if ($score > $best_score) {
+                $best_score = $score;
+                $best_candidate = $teacher;
             }
         }
 
-        return null; // Nie znaleziono żadnego dostępnego nauczyciela
+        return $best_candidate;
     }
 
-    // Utworzenie rekordu zastępstwa
-    private function utworzZastepstwo($plan_dzienny_id, $nieobecnosc_id, $nauczyciel_zastepujacy_id) {
+    private function policzOkienka($lekcje)
+    {
+        if (count($lekcje) < 2)
+            return 0;
+        $gaps = 0;
+        for ($i = 0; $i < count($lekcje) - 1; $i++) {
+            $diff = $lekcje[$i + 1] - $lekcje[$i];
+            if ($diff > 1) {
+                $gaps += ($diff - 1);
+            }
+        }
+        return $gaps;
+    }
+
+    private function pobierzIdNieobecnychNauczycieli($data)
+    {
+        static $cache = [];
+        if (isset($cache[$data]))
+            return $cache[$data];
+
+        $ids = [];
+        $stmt = $this->conn->prepare("SELECT nauczyciel_id FROM nieobecnosci WHERE ? BETWEEN data_od AND data_do");
+        $stmt->bind_param("s", $data);
+        if ($stmt->execute()) {
+            $res = $stmt->get_result();
+            while ($row = $res->fetch_assoc())
+                $ids[] = $row['nauczyciel_id'];
+        }
+        $cache[$data] = $ids;
+        return $ids;
+    }
+
+    private function getDzienTygodnia($data)
+    {
+        $timestamp = strtotime($data);
+        $numer = date('N', $timestamp);
+        $map = [1 => 'poniedzialek', 2 => 'wtorek', 3 => 'sroda', 4 => 'czwartek', 5 => 'piatek', 6 => 'sobota', 7 => 'niedziela'];
+        return $map[$numer];
+    }
+
+    private function utworzZastepstwo($plan_dzienny_id, $nieobecnosc_id, $nauczyciel_zastepujacy_id)
+    {
+        // Input validation
+        if (!is_numeric($plan_dzienny_id) || $plan_dzienny_id <= 0 ||
+            !is_numeric($nieobecnosc_id) || $nieobecnosc_id <= 0 ||
+            !is_numeric($nauczyciel_zastepujacy_id) || $nauczyciel_zastepujacy_id <= 0) {
+            error_log("SUBSTITUTE_ERROR: Invalid parameters for substitution creation");
+            return false;
+        }
+
         $stmt = $this->conn->prepare("
             INSERT INTO zastepstwa (plan_dzienny_id, nieobecnosc_id, nauczyciel_zastepujacy_id)
             VALUES (?, ?, ?)
         ");
-        $stmt->bind_param("iii", $plan_dzienny_id, $nieobecnosc_id, $nauczyciel_zastepujacy_id);
-        return $stmt->execute();
-    }
-    
-    // Usuwanie zastępstw dla nieobecności
-    public function usunZastepstwa($nieobecnosc_id) {
-        // Pobieramy wszystkie zastępstwa - używamy prepared statement
-        $stmt = $this->conn->prepare("
-            SELECT * FROM zastepstwa WHERE nieobecnosc_id = ?
-        ");
-
+        
         if (!$stmt) {
-            error_log("usunZastepstwa: Błąd przygotowania zapytania pobierania zastępstw: " . $this->conn->error);
+            error_log("SUBSTITUTE_ERROR: Failed to prepare substitution query: " . $this->conn->error);
             return false;
         }
-
-        $stmt->bind_param("i", $nieobecnosc_id);
-
-        if (!$stmt->execute()) {
-            error_log("usunZastepstwa: Błąd wykonania zapytania pobierania zastępstw: " . $stmt->error);
-            $stmt->close();
-            return false;
+        
+        $stmt->bind_param("iii", $plan_dzienny_id, $nieobecnosc_id, $nauczyciel_zastepujacy_id);
+        
+        $result = $stmt->execute();
+        if (!$result) {
+            error_log("SUBSTITUTE_ERROR: Failed to create substitution: " . $stmt->error);
         }
-
-        $zastepstwa = $stmt->get_result();
+        
         $stmt->close();
+        return $result;
+    }
 
-        while ($zastepstwo = $zastepstwa->fetch_assoc()) {
-            // Przywracamy oryginalnego nauczyciela - używamy prepared statement
-            $stmt_update = $this->conn->prepare("
-                UPDATE plan_dzienny pd
-                JOIN zastepstwa z ON pd.id = z.plan_dzienny_id
-                SET pd.nauczyciel_id = pd.oryginalny_nauczyciel_id,
-                    pd.czy_zastepstwo = 0,
-                    pd.oryginalny_nauczyciel_id = NULL
-                WHERE z.id = ?
+    private function aktualizujPlanDzienny($id, $oryg_nauczyciel_id, $nowy_nauczyciel_id)
+    {
+        // Input validation
+        if (!is_numeric($id) || $id <= 0 ||
+            !is_numeric($oryg_nauczyciel_id) || $oryg_nauczyciel_id <= 0 ||
+            !is_numeric($nowy_nauczyciel_id) || $nowy_nauczyciel_id <= 0) {
+            error_log("SUBSTITUTE_ERROR: Invalid parameters for plan update");
+            return false;
+        }
+
+        $stmt = $this->conn->prepare("
+            UPDATE plan_dzienny
+            SET czy_zastepstwo = 1,
+                oryginalny_nauczyciel_id = ?,
+                nauczyciel_id = ?
+            WHERE id = ?
+        ");
+        
+        if (!$stmt) {
+            error_log("SUBSTITUTE_ERROR: Failed to prepare plan update query: " . $this->conn->error);
+            return false;
+        }
+        
+        $stmt->bind_param("iii", $oryg_nauczyciel_id, $nowy_nauczyciel_id, $id);
+        
+        $result = $stmt->execute();
+        if (!$result) {
+            error_log("SUBSTITUTE_ERROR: Failed to update plan: " . $stmt->error);
+        }
+        
+        $stmt->close();
+        return $result;
+    }
+
+    public function usunZastepstwa($nieobecnosc_id)
+    {
+        $stmt = $this->conn->prepare("SELECT * FROM zastepstwa WHERE nieobecnosc_id = ?");
+        $stmt->bind_param("i", $nieobecnosc_id);
+        $stmt->execute();
+        $res = $stmt->get_result();
+
+        while ($z = $res->fetch_assoc()) {
+            // Restore original in plan_dzienny
+            $s_upd = $this->conn->prepare("
+                UPDATE plan_dzienny 
+                SET nauczyciel_id = oryginalny_nauczyciel_id,
+                    czy_zastepstwo = 0,
+                    oryginalny_nauczyciel_id = NULL
+                WHERE id = ?
             ");
-
-            if ($stmt_update) {
-                $stmt_update->bind_param("i", $zastepstwo['id']);
-
-                if (!$stmt_update->execute()) {
-                    error_log("usunZastepstwa: Błąd przywracania oryginalnego nauczyciela dla zastępstwa ID " . $zastepstwo['id'] . ": " . $stmt_update->error);
-                }
-
-                $stmt_update->close();
-            } else {
-                error_log("usunZastepstwa: Błąd przygotowania zapytania aktualizacji: " . $this->conn->error);
-            }
+            $s_upd->bind_param("i", $z['plan_dzienny_id']);
+            $s_upd->execute();
         }
 
-        // Usuwamy zastępstwa - używamy prepared statement
-        $stmt_delete = $this->conn->prepare("DELETE FROM zastepstwa WHERE nieobecnosc_id = ?");
-
-        if (!$stmt_delete) {
-            error_log("usunZastepstwa: Błąd przygotowania zapytania usuwania: " . $this->conn->error);
-            return false;
-        }
-
-        $stmt_delete->bind_param("i", $nieobecnosc_id);
-
-        if (!$stmt_delete->execute()) {
-            error_log("usunZastepstwa: Błąd usuwania zastępstw: " . $stmt_delete->error);
-            $stmt_delete->close();
-            return false;
-        }
-
-        $stmt_delete->close();
-
-        return true;
+        $stmt = $this->conn->prepare("DELETE FROM zastepstwa WHERE nieobecnosc_id = ?");
+        $stmt->bind_param("i", $nieobecnosc_id);
+        return $stmt->execute();
     }
 }
 ?>

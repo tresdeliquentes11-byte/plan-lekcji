@@ -1,42 +1,155 @@
 <?php
+// Environment configuration
+define('ENVIRONMENT', 'development'); // Change to 'production' in production environment
+
 // Konfiguracja połączenia z bazą danych
 define('DB_HOST', 'localhost');
 define('DB_USER', 'root');
 define('DB_PASS', '');
 define('DB_NAME', 'plan_lekcji');
 
-// Połączenie z bazą danych
+// Połączenie z bazą danych - ENHANCED ERROR HANDLING
 try {
     $conn = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME);
     
     if ($conn->connect_error) {
-        die("Błąd połączenia z bazą danych: " . $conn->connect_error);
+        // Don't expose detailed errors in production
+        $error_message = (defined('ENVIRONMENT') && ENVIRONMENT === 'development')
+            ? "Błąd połączenia z bazą danych: " . $conn->connect_error
+            : "Błąd połączenia z bazą danych. Skontaktuj się z administratorem.";
+        
+        error_log("Database connection error: " . $conn->connect_error);
+        die($error_message);
     }
     
     $conn->set_charset("utf8mb4");
 } catch (Exception $e) {
-    die("Błąd połączenia: " . $e->getMessage());
+    $error_message = (defined('ENVIRONMENT') && ENVIRONMENT === 'development')
+        ? "Błąd połączenia: " . $e->getMessage()
+        : "Błąd połączenia z bazą danych. Skontaktuj się z administratorem.";
+    
+    error_log("Database connection exception: " . $e->getMessage());
+    die($error_message);
 }
 
-// Rozpoczęcie sesji
+// Rozpoczęcie sesji - ENHANCED SECURITY
 if (session_status() === PHP_SESSION_NONE) {
+    // Secure session configuration
+    session_set_cookie_params([
+        'lifetime' => 3600, // 1 hour
+        'path' => '/',
+        'domain' => $_SERVER['HTTP_HOST'] ?? 'localhost',
+        'secure' => isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on',
+        'httponly' => true,
+        'samesite' => 'Strict'
+    ]);
+    
     session_start();
+    
+    // Regenerate session ID to prevent session fixation
+    if (!isset($_SESSION['session_regenerated'])) {
+        session_regenerate_id(true);
+        $_SESSION['session_regenerated'] = true;
+    }
 }
 
-// Funkcja sprawdzająca czy użytkownik jest zalogowany
+// Funkcja sprawdzająca czy użytkownik jest zalogowany - ENHANCED SECURITY
 function sprawdz_zalogowanie() {
-    if (!isset($_SESSION['user_id'])) {
+    if (!isset($_SESSION['user_id']) || !is_numeric($_SESSION['user_id'])) {
+        header('Location: index.php');
+        exit();
+    }
+    
+    // Additional session validation
+    if (!isset($_SESSION['session_regenerated']) || !isset($_SESSION['ip_address'])) {
+        session_destroy();
+        header('Location: index.php');
+        exit();
+    }
+    
+    // Validate IP address (optional - can cause issues with dynamic IPs)
+    if ($_SESSION['ip_address'] !== $_SERVER['REMOTE_ADDR']) {
+        // Log potential session hijacking attempt
+        error_log("Session IP mismatch: " . $_SESSION['ip_address'] . " vs " . $_SERVER['REMOTE_ADDR']);
+        session_destroy();
         header('Location: index.php');
         exit();
     }
 }
 
-// Funkcja sprawdzająca uprawnienia użytkownika
+// Funkcja sprawdzająca uprawnienia użytkownika - ENHANCED VALIDATION
 function sprawdz_uprawnienia($wymagany_typ) {
     sprawdz_zalogowanie();
+    
+    // Validate user type format
+    $valid_types = ['dyrektor', 'administrator', 'nauczyciel', 'uczen'];
+    if (!in_array($wymagany_typ, $valid_types)) {
+        error_log("Invalid user type requested: $wymagany_typ");
+        die("Nieprawidłowe żądanie uprawnień.");
+    }
+    
     if ($_SESSION['user_type'] !== $wymagany_typ) {
         header('Location: brak_uprawnien.php');
         exit();
+    }
+}
+
+// Input validation function
+function validate_input($data, $type = 'string', $required = true) {
+    if ($required && (empty($data) && $data !== '0')) {
+        throw new InvalidArgumentException("Pole jest wymagane");
+    }
+    
+    if (empty($data) && !$required) {
+        return null;
+    }
+    
+    switch ($type) {
+        case 'int':
+            if (!is_numeric($data) || (int)$data != $data) {
+                throw new InvalidArgumentException("Wartość musi być liczbą całkowitą");
+            }
+            return (int)$data;
+            
+        case 'float':
+            if (!is_numeric($data)) {
+                throw new InvalidArgumentException("Wartość musi być liczbą");
+            }
+            return (float)$data;
+            
+        case 'email':
+            if (!filter_var($data, FILTER_VALIDATE_EMAIL)) {
+                throw new InvalidArgumentException("Nieprawidłowy format email");
+            }
+            return $data;
+            
+        case 'string':
+            if (!is_string($data)) {
+                throw new InvalidArgumentException("Wartość musi być tekstem");
+            }
+            return trim($data);
+            
+        case 'date':
+            $date = DateTime::createFromFormat('Y-m-d', $data);
+            if (!$date || $date->format('Y-m-d') !== $data) {
+                throw new InvalidArgumentException("Nieprawidłowy format daty (YYYY-MM-DD)");
+            }
+            return $data;
+            
+        case 'alpha':
+            if (!preg_match('/^[a-zA-ZąęóąśłżźćńĄĘÓĄŚŁŻŹĆŃ]+$/', $data)) {
+                throw new InvalidArgumentException("Wartość może zawierać tylko litery");
+            }
+            return $data;
+            
+        case 'alphanum':
+            if (!preg_match('/^[a-zA-Z0-9ąęóąśłżźćńĄĘÓĄŚŁŻŹĆŃ ]+$/', $data)) {
+                throw new InvalidArgumentException("Wartość może zawierać tylko litery, cyfry i spacje");
+            }
+            return $data;
+            
+        default:
+            throw new InvalidArgumentException("Nieznany typ walidacji: $type");
     }
 }
 
@@ -45,19 +158,34 @@ function e($string) {
     return htmlspecialchars($string, ENT_QUOTES, 'UTF-8');
 }
 
-// CSRF Protection Functions
+// Enhanced CSRF Protection Functions
 function csrf_token() {
-    if (empty($_SESSION['csrf_token'])) {
+    if (empty($_SESSION['csrf_token']) || empty($_SESSION['csrf_token_time'])) {
         $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+        $_SESSION['csrf_token_time'] = time();
     }
     return $_SESSION['csrf_token'];
 }
 
 function verify_csrf_token($token) {
-    if (!isset($_SESSION['csrf_token'])) {
+    if (!isset($_SESSION['csrf_token']) || !isset($_SESSION['csrf_token_time'])) {
         return false;
     }
-    return hash_equals($_SESSION['csrf_token'], $token);
+    
+    // Token expires after 1 hour
+    if (time() - $_SESSION['csrf_token_time'] > 3600) {
+        unset($_SESSION['csrf_token']);
+        unset($_SESSION['csrf_token_time']);
+        return false;
+    }
+    
+    $valid = hash_equals($_SESSION['csrf_token'], $token);
+    
+    // One-time use - clear token after validation
+    unset($_SESSION['csrf_token']);
+    unset($_SESSION['csrf_token_time']);
+    
+    return $valid;
 }
 
 function csrf_field() {

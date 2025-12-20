@@ -163,14 +163,23 @@ class GeneratorPlanu {
                 $sala_nauczyciel_exists = $row_sala_n && $row_sala_n['cnt'] > 0;
                 $stmt_sala_n->close();
 
-                // Sprawdź czy istnieje jakakolwiek sala
-                $any_sala = $this->conn->query("SELECT COUNT(*) as cnt FROM sale");
-                if (!$any_sala) {
+                // Sprawdź czy istnieje jakakolwiek sala - FIXED: Added proper error handling
+                $stmt_any_sala = $this->conn->prepare("SELECT COUNT(*) as cnt FROM sale");
+                if (!$stmt_any_sala) {
                     $this->validation_errors[] = "Błąd bazy danych sprawdzania dostępnych sal: " . $this->conn->error;
                     continue;
                 }
-                $row_any_sala = $any_sala->fetch_assoc();
+                
+                if (!$stmt_any_sala->execute()) {
+                    $this->validation_errors[] = "Błąd wykonania zapytania sprawdzania dostępnych sal: " . $stmt_any_sala->error;
+                    $stmt_any_sala->close();
+                    continue;
+                }
+                
+                $result_any_sala = $stmt_any_sala->get_result();
+                $row_any_sala = $result_any_sala->fetch_assoc();
                 $sala_any_exists = $row_any_sala && $row_any_sala['cnt'] > 0;
+                $stmt_any_sala->close();
 
                 if (!$sala_exists && !$sala_nauczyciel_exists && !$sala_any_exists) {
                     $this->validation_errors[] = "Klasa $klasa_nazwa: przedmiot '$przedmiot_nazwa' - brak dostępnych sal";
@@ -350,6 +359,13 @@ class GeneratorPlanu {
             }
         }
 
+        // LOG: Before sorting
+        $before_sort = [];
+        foreach ($przedmioty as $p) {
+            $before_sort[] = "{$p['nazwa']}({$p['hours']}h, avail:{$p['dostepnosc']})";
+        }
+        error_log("GENERATOR_DEBUG: Before sorting for class $klasa_id: " . implode(', ', $before_sort));
+
         // Sortuj: najpierw najwięcej godzin, potem najmniej dostępności
         usort($przedmioty, function($a, $b) {
             if ($a['hours'] != $b['hours']) {
@@ -358,11 +374,181 @@ class GeneratorPlanu {
             return $a['dostepnosc'] - $b['dostepnosc']; // ASC (mniej dostępności = wyższy priorytet)
         });
 
+        // LOG: After sorting
+        $after_sort = [];
+        foreach ($przedmioty as $p) {
+            $after_sort[] = "{$p['nazwa']}({$p['hours']}h, avail:{$p['dostepnosc']})";
+        }
+        error_log("GENERATOR_DEBUG: After sorting for class $klasa_id: " . implode(', ', $after_sort));
+
         return $przedmioty;
+    }
+
+    /**
+     * Improved subject sorting with look-ahead strategy and scoring system
+     * Evaluates each potential assignment based on multiple factors
+     */
+    private function sortujPrzedmiotyDlaKlasyZLookAhead($klasa_id, $dzien, $lekcja_nr) {
+        if (!isset($this->remaining_hours[$klasa_id])) {
+            return [];
+        }
+
+        $przedmioty = [];
+        foreach ($this->remaining_hours[$klasa_id] as $przedmiot_id => $data) {
+            if ($data['hours'] > 0) {
+                $nauczyciel_id = $data['nauczyciel_id'];
+                
+                // Calculate availability score
+                $dostepnosc_count = 0;
+                foreach ($this->dni as $dz) {
+                    for ($i = 1; $i <= 10; $i++) {
+                        if (isset($this->teacher_availability[$nauczyciel_id][$dz][$i]) &&
+                            $this->teacher_availability[$nauczyciel_id][$dz][$i] &&
+                            !isset($this->teacher_schedule[$nauczyciel_id][$dz][$i])) {
+                            $dostepnosc_count++;
+                        }
+                    }
+                }
+
+                // Calculate look-ahead score (0-100, higher is better)
+                $score = $this->obliczWynikPrzypisania($klasa_id, $przedmiot_id, $nauczyciel_id, $dzien, $lekcja_nr, $data);
+
+                $przedmioty[] = [
+                    'przedmiot_id' => $przedmiot_id,
+                    'hours' => $data['hours'],
+                    'nauczyciel_id' => $nauczyciel_id,
+                    'dostepnosc' => $dostepnosc_count,
+                    'nazwa' => $data['nazwa'],
+                    'skrot' => $data['skrot'],
+                    'czy_rozszerzony' => $data['czy_rozszerzony'],
+                    'score' => $score
+                ];
+            }
+        }
+
+        // LOG: Before sorting with scores
+        $before_sort = [];
+        foreach ($przedmioty as $p) {
+            $before_sort[] = "{$p['nazwa']}({$p['hours']}h, score:{$p['score']})";
+        }
+        error_log("GENERATOR_DEBUG: Before scoring for class $klasa_id, day $dzien, hour $lekcja_nr: " . implode(', ', $before_sort));
+
+        // Sort by score (descending), then by hours (descending), then by availability (ascending)
+        usort($przedmioty, function($a, $b) {
+            if ($a['score'] != $b['score']) {
+                return $b['score'] - $a['score']; // Higher score first
+            }
+            if ($a['hours'] != $b['hours']) {
+                return $b['hours'] - $a['hours']; // More hours first
+            }
+            return $a['dostepnosc'] - $b['dostepnosc']; // Less availability first
+        });
+
+        // LOG: After sorting with scores
+        $after_sort = [];
+        foreach ($przedmioty as $p) {
+            $after_sort[] = "{$p['nazwa']}({$p['hours']}h, score:{$p['score']})";
+        }
+        error_log("GENERATOR_DEBUG: After scoring for class $klasa_id, day $dzien, hour $lekcja_nr: " . implode(', ', $after_sort));
+
+        return $przedmioty;
+    }
+
+    /**
+     * Calculate assignment score based on multiple factors
+     * Higher score = better assignment choice
+     */
+    private function obliczWynikPrzypisania($klasa_id, $przedmiot_id, $nauczyciel_id, $dzien, $lekcja_nr, $data) {
+        $score = 50; // Base score
+        
+        // Factor 1: Teacher workload balance (20 points)
+        $teacher_weekly_load = $this->policzObciazenieNauczyciela($nauczyciel_id);
+        if ($teacher_weekly_load < 15) {
+            $score += 20; // Teacher has light load
+        } elseif ($teacher_weekly_load < 20) {
+            $score += 10; // Teacher has moderate load
+        } else {
+            $score += 0; // Teacher is busy
+        }
+        
+        // Factor 2: Subject distribution across week (15 points)
+        $family = $this->getFamilyId($przedmiot_id, $klasa_id);
+        $family_weekly_count = $this->policzWystapieniaRodzinyTygodniowo($klasa_id, $family);
+        if ($family_weekly_count == 0) {
+            $score += 15; // First occurrence of this subject family
+        } elseif ($family_weekly_count < 3) {
+            $score += 10; // Few occurrences
+        } else {
+            $score += 5; // Many occurrences
+        }
+        
+        // Factor 3: Time of day preference (10 points)
+        if ($lekcja_nr <= 3) {
+            // Morning slots are better for difficult subjects
+            if ($data['czy_rozszerzony']) {
+                $score += 10; // Extended subjects in morning
+            } else {
+                $score += 5; // Regular subjects in morning
+            }
+        } elseif ($lekcja_nr >= 6) {
+            // Late slots are worse for difficult subjects
+            if ($data['czy_rozszerzony']) {
+                $score -= 5; // Avoid extended subjects late
+            }
+        }
+        
+        // Factor 4: Daily subject variety (5 points)
+        $family_today = isset($this->occurrences[$klasa_id][$dzien][$family])
+            ? $this->occurrences[$klasa_id][$dzien][$family]
+            : 0;
+        if ($family_today == 0) {
+            $score += 5; // First occurrence today
+        } elseif ($family_today >= 2) {
+            $score -= 10; // Too many today (will be filtered anyway)
+        }
+        
+        // Ensure score is within 0-100 range
+        return max(0, min(100, $score));
+    }
+
+    /**
+     * Calculate current weekly load for a teacher
+     */
+    private function policzObciazenieNauczyciela($nauczyciel_id) {
+        $count = 0;
+        if (isset($this->teacher_schedule[$nauczyciel_id])) {
+            foreach ($this->teacher_schedule[$nauczyciel_id] as $dzien => $lekcje) {
+                $count += count($lekcje);
+            }
+        }
+        return $count;
+    }
+
+    /**
+     * Count weekly occurrences of a subject family for a class
+     */
+    private function policzWystapieniaRodzinyTygodniowo($klasa_id, $family) {
+        $count = 0;
+        if (isset($this->occurrences[$klasa_id])) {
+            foreach ($this->occurrences[$klasa_id] as $dzien => $families) {
+                if (isset($families[$family])) {
+                    $count += $families[$family];
+                }
+            }
+        }
+        return $count;
     }
 
     private function przypisujLekcje() {
         $this->unassigned_slots = [];
+        $total_slots = 0;
+        $successful_assignments = 0;
+        $failed_teacher_availability = 0;
+        $failed_room_availability = 0;
+        $failed_subject_limits = 0;
+
+        // LOG: Start of assignment process
+        error_log("GENERATOR_DEBUG: Starting improved lesson assignment process with look-ahead strategy");
 
         // Pobierz wszystkie klasy
         $klasy_result = $this->conn->query("SELECT * FROM klasy ORDER BY nazwa");
@@ -370,23 +556,33 @@ class GeneratorPlanu {
         while ($klasa = $klasy_result->fetch_assoc()) {
             $klasa_id = $klasa['id'];
             $max_godzin_dziennie = $klasa['ilosc_godzin_dziennie'];
+            
+            // LOG: Class processing start
+            error_log("GENERATOR_DEBUG: Processing class ID: $klasa_id, max daily hours: $max_godzin_dziennie");
 
             // Dla każdego dnia
             foreach ($this->dni as $dzien_idx => $dzien) {
                 // Dla każdego slotu
                 for ($lekcja_nr = 1; $lekcja_nr <= $max_godzin_dziennie; $lekcja_nr++) {
+                    $total_slots++;
+                    
                     // Sprawdź dzienny limit
                     if ($this->daily_count[$klasa_id][$dzien] >= $max_godzin_dziennie) {
                         break; // Przejdź do kolejnego dnia
                     }
 
-                    // Pobierz posortowane przedmioty
-                    $przedmioty = $this->sortujPrzedmiotyDlaKlasy($klasa_id);
+                    // Pobierz posortowane przedmioty z uwzględnieniem look-ahead
+                    $przedmioty = $this->sortujPrzedmiotyDlaKlasyZLookAhead($klasa_id, $dzien, $lekcja_nr);
+                    
+                    // LOG: Slot processing start
+                    error_log("GENERATOR_DEBUG: Processing slot - Class: $klasa_id, Day: $dzien, Hour: $lekcja_nr, Available subjects: " . count($przedmioty));
 
                     $przydzielono = false;
+                    $attempts = 0;
 
-                    // Iteruj po przedmiotach
+                    // Iteruj po przedmiotach z uwzględnieniem oceny
                     foreach ($przedmioty as $przedmiot) {
+                        $attempts++;
                         $przedmiot_id = $przedmiot['przedmiot_id'];
                         $nauczyciel_id = $przedmiot['nauczyciel_id'];
 
@@ -402,11 +598,17 @@ class GeneratorPlanu {
                             : 0;
 
                         if ($occurrences_today >= 2) {
+                            $failed_subject_limits++;
+                            // LOG: Subject limit reached
+                            error_log("GENERATOR_DEBUG: Subject limit reached - Class: $klasa_id, Day: $dzien, Subject: $przedmiot_id, Family: $family, Occurrences: $occurrences_today");
                             continue; // Limit wystąpień osiągnięty
                         }
 
                         // Sprawdź dostępność nauczyciela
                         if (!$this->czyNauczycielDostepny($nauczyciel_id, $dzien, $lekcja_nr)) {
+                            $failed_teacher_availability++;
+                            // LOG: Teacher not available
+                            error_log("GENERATOR_DEBUG: Teacher not available - Class: $klasa_id, Day: $dzien, Hour: $lekcja_nr, Teacher: $nauczyciel_id");
                             continue;
                         }
 
@@ -414,12 +616,19 @@ class GeneratorPlanu {
                         $sala_id = $this->znajdzSale($dzien, $lekcja_nr, $przedmiot_id, $nauczyciel_id);
 
                         if ($sala_id === null) {
+                            $failed_room_availability++;
+                            // LOG: No room available
+                            error_log("GENERATOR_DEBUG: No room available - Class: $klasa_id, Day: $dzien, Hour: $lekcja_nr, Subject: $przedmiot_id, Teacher: $nauczyciel_id");
                             continue; // Brak dostępnej sali
                         }
 
                         // PRZYPISZ LEKCJĘ
                         $this->przypiszLekcje($klasa_id, $dzien, $lekcja_nr, $przedmiot_id, $nauczyciel_id, $sala_id);
                         $przydzielono = true;
+                        $successful_assignments++;
+                        
+                        // LOG: Successful assignment
+                        error_log("GENERATOR_DEBUG: Successfully assigned - Class: $klasa_id, Day: $dzien, Hour: $lekcja_nr, Subject: $przedmiot_id, Teacher: $nauczyciel_id, Room: $sala_id, Score: {$przedmiot['score']}, Attempts: $attempts");
                         break; // Przejdź do kolejnego slotu
                     }
 
@@ -430,10 +639,17 @@ class GeneratorPlanu {
                             'dzien' => $dzien,
                             'lekcja_nr' => $lekcja_nr
                         ];
+                        
+                        // LOG: Failed to assign slot
+                        error_log("GENERATOR_DEBUG: Failed to assign slot - Class: $klasa_id, Day: $dzien, Hour: $lekcja_nr, Attempts: $attempts");
                     }
                 }
             }
         }
+        
+        // LOG: Assignment process summary
+        error_log("GENERATOR_DEBUG: Assignment process completed - Total slots: $total_slots, Successful: $successful_assignments, Unassigned: " . count($this->unassigned_slots) .
+                  ", Failed teacher availability: $failed_teacher_availability, Failed room availability: $failed_room_availability, Failed subject limits: $failed_subject_limits");
     }
 
 
@@ -645,6 +861,15 @@ class GeneratorPlanu {
     private function naprawSloty() {
         $max_attempts_per_slot = 200;
         $repaired = 0;
+        $total_unassigned = count($this->unassigned_slots);
+        $strategy1_success = 0;
+        $strategy2_success = 0;
+        $strategy3_success = 0;
+        $strategy4_success = 0;
+        $total_attempts = 0;
+
+        // LOG: Start repair process
+        error_log("GENERATOR_DEBUG: Starting repair process for $total_unassigned unassigned slots");
 
         foreach ($this->unassigned_slots as $slot) {
             $klasa_id = $slot['klasa_id'];
@@ -654,11 +879,15 @@ class GeneratorPlanu {
             $naprawiono = false;
 
             for ($attempt = 0; $attempt < $max_attempts_per_slot && !$naprawiono; $attempt++) {
+                $total_attempts++;
+                
                 // Strategia 1: Spróbuj ponownie przypisać z pozostałych przedmiotów
                 $naprawiono = $this->probaPowtornegoPrzypisania($klasa_id, $dzien, $lekcja_nr);
 
                 if ($naprawiono) {
                     $repaired++;
+                    $strategy1_success++;
+                    error_log("GENERATOR_DEBUG: Strategy 1 (reassign) successful - Class: $klasa_id, Day: $dzien, Hour: $lekcja_nr, Attempt: $attempt");
                     break;
                 }
 
@@ -667,25 +896,189 @@ class GeneratorPlanu {
 
                 if ($naprawiono) {
                     $repaired++;
+                    $strategy2_success++;
+                    error_log("GENERATOR_DEBUG: Strategy 2 (swap within class) successful - Class: $klasa_id, Day: $dzien, Hour: $lekcja_nr, Attempt: $attempt");
                     break;
                 }
 
                 // Strategia 3: Swap między klasami
-                // (wymagałoby znacznie więcej logiki - pominięte dla uproszczenia)
+                $naprawiono = $this->probaSwapMiedzyKlasami($klasa_id, $dzien, $lekcja_nr);
+
+                if ($naprawiono) {
+                    $repaired++;
+                    $strategy3_success++;
+                    error_log("GENERATOR_DEBUG: Strategy 3 (cross-class swap) successful - Class: $klasa_id, Day: $dzien, Hour: $lekcja_nr, Attempt: $attempt");
+                    break;
+                }
 
                 // Strategia 4: Przesunięcie lekcji w obrębie dnia
                 $naprawiono = $this->probaPrzesuniecia($klasa_id, $dzien, $lekcja_nr);
 
                 if ($naprawiono) {
                     $repaired++;
+                    $strategy4_success++;
+                    error_log("GENERATOR_DEBUG: Strategy 4 (shift within day) successful - Class: $klasa_id, Day: $dzien, Hour: $lekcja_nr, Attempt: $attempt");
                     break;
                 }
             }
+            
+            if (!$naprawiono) {
+                error_log("GENERATOR_DEBUG: Failed to repair slot after $max_attempts_per_slot attempts - Class: $klasa_id, Day: $dzien, Hour: $lekcja_nr");
+            }
         }
+
+        // LOG: Repair process summary
+        error_log("GENERATOR_DEBUG: Repair process completed - Total unassigned: $total_unassigned, Repaired: $repaired, Remaining: " . ($total_unassigned - $repaired) .
+                  ", Strategy1: $strategy1_success, Strategy2: $strategy2_success, Strategy3: $strategy3_success, Strategy4: $strategy4_success, Total attempts: $total_attempts");
 
         return $repaired;
     }
 
+
+    /**
+     * Enhanced multi-class swap strategy
+     * Attempts to swap lessons between different classes to resolve conflicts
+     */
+    private function probaSwapMiedzyKlasami($klasa_id_target, $dzien_target, $lekcja_nr_target) {
+        // Get all classes - FIXED SQL Injection
+        $stmt = $this->conn->prepare("SELECT id FROM klasy WHERE id != ?");
+        if (!$stmt) {
+            error_log("Błąd przygotowania zapytania probaSwapMiedzyKlasami: " . $this->conn->error);
+            return false;
+        }
+        $stmt->bind_param("i", $klasa_id_target);
+        if (!$stmt->execute()) {
+            error_log("Błąd wykonania zapytania probaSwapMiedzyKlasami: " . $stmt->error);
+            $stmt->close();
+            return false;
+        }
+        $klasy_result = $stmt->get_result();
+        
+        if (!$klasy_result) {
+            $stmt->close();
+            return false;
+        }
+        
+        $swap_attempts = 0;
+        $max_swap_attempts = 50; // Limit to prevent infinite loops
+        
+        // FIXED: Proper while loop condition
+        while (($klasa_source = $klasy_result->fetch_assoc()) !== false && $swap_attempts < $max_swap_attempts) {
+            $klasa_id_source = $klasa_source['id'];
+            $swap_attempts++;
+            
+            // Try to find a compatible lesson in another class
+            foreach ($this->dni as $dzien_source) {
+                if (!isset($this->class_schedule[$klasa_id_source][$dzien_source])) {
+                    continue;
+                }
+                
+                foreach ($this->class_schedule[$klasa_id_source][$dzien_source] as $lekcja_nr_source => $lekcja_data) {
+                    // Check if this lesson can be moved to target slot
+                    if ($this->czyMoznaZamienicMiedzyKlasami(
+                        $klasa_id_source, $dzien_source, $lekcja_nr_source,
+                        $klasa_id_target, $dzien_target, $lekcja_nr_target
+                    )) {
+                        // Perform cross-class swap
+                        $this->zamienSlotyMiedzyKlasami(
+                            $klasa_id_source, $dzien_source, $lekcja_nr_source,
+                            $klasa_id_target, $dzien_target, $lekcja_nr_target
+                        );
+                        
+                        error_log("GENERATOR_DEBUG: Cross-class swap successful - Source: $klasa_id_source/$dzien_source/$lekcja_nr_source, Target: $klasa_id_target/$dzien_target/$lekcja_nr_target");
+                        return true;
+                    }
+                }
+            }
+        }
+        
+        $stmt->close();
+        return false;
+    }
+
+    /**
+     * Check if two lessons from different classes can be swapped
+     */
+    private function czyMoznaZamienicMiedzyKlasami($klasa1_id, $dzien1, $lekcja1, $klasa2_id, $dzien2, $lekcja2) {
+        // Target slot must be empty
+        if (isset($this->class_schedule[$klasa2_id][$dzien2][$lekcja2])) {
+            return false;
+        }
+        
+        // Get source lesson data
+        $lekcja1_data = $this->class_schedule[$klasa1_id][$dzien1][$lekcja1];
+        $nauczyciel1_id = $lekcja1_data['nauczyciel_id'];
+        $sala1_id = $lekcja1_data['sala_id'];
+        $przedmiot1_id = $lekcja1_data['przedmiot_id'];
+        
+        // Check if source teacher is available at target time
+        if (!$this->czyNauczycielDostepny($nauczyciel1_id, $dzien2, $lekcja2)) {
+            return false;
+        }
+        
+        // Check if room is available at target time
+        if (!$this->room_availability[$sala1_id][$dzien2][$lekcja2]) {
+            return false;
+        }
+        
+        // Check subject constraints for target class
+        $family = $this->getFamilyId($przedmiot1_id, $klasa2_id);
+        $occurrences_today = isset($this->occurrences[$klasa2_id][$dzien2][$family])
+            ? $this->occurrences[$klasa2_id][$dzien2][$family]
+            : 0;
+        
+        if ($occurrences_today >= 2) {
+            return false; // Would violate subject limit
+        }
+        
+        return true;
+    }
+
+    /**
+     * Perform swap between two different classes
+     */
+    private function zamienSlotyMiedzyKlasami($klasa1_id, $dzien1, $lekcja1, $klasa2_id, $dzien2, $lekcja2) {
+        // Get lesson 1 data
+        $lekcja1_data = $this->class_schedule[$klasa1_id][$dzien1][$lekcja1];
+        $nauczyciel1_id = $lekcja1_data['nauczyciel_id'];
+        $sala1_id = $lekcja1_data['sala_id'];
+        $przedmiot1_id = $lekcja1_data['przedmiot_id'];
+        
+        // Remove lesson 1 from original position
+        unset($this->class_schedule[$klasa1_id][$dzien1][$lekcja1]);
+        unset($this->teacher_schedule[$nauczyciel1_id][$dzien1][$lekcja1]);
+        $this->room_availability[$sala1_id][$dzien1][$lekcja1] = true;
+        $this->daily_count[$klasa1_id][$dzien1]--;
+        
+        $family1 = $this->getFamilyId($przedmiot1_id, $klasa1_id);
+        if (isset($this->occurrences[$klasa1_id][$dzien1][$family1])) {
+            $this->occurrences[$klasa1_id][$dzien1][$family1]--;
+        }
+        
+        // Add lesson 1 to new position (class 2)
+        $godziny = $this->obliczGodziny($lekcja2);
+        $this->class_schedule[$klasa2_id][$dzien2][$lekcja2] = [
+            'przedmiot_id' => $przedmiot1_id,
+            'nauczyciel_id' => $nauczyciel1_id,
+            'sala_id' => $sala1_id,
+            'godzina_rozpoczecia' => $godziny['start'],
+            'godzina_zakonczenia' => $godziny['koniec']
+        ];
+        
+        $this->teacher_schedule[$nauczyciel1_id][$dzien2][$lekcja2] = [
+            'klasa_id' => $klasa2_id,
+            'przedmiot_id' => $przedmiot1_id,
+            'sala_id' => $sala1_id
+        ];
+        
+        $this->room_availability[$sala1_id][$dzien2][$lekcja2] = false;
+        $this->daily_count[$klasa2_id][$dzien2]++;
+        
+        if (!isset($this->occurrences[$klasa2_id][$dzien2][$family1])) {
+            $this->occurrences[$klasa2_id][$dzien2][$family1] = 0;
+        }
+        $this->occurrences[$klasa2_id][$dzien2][$family1]++;
+    }
 
     private function probaPowtornegoPrzypisania($klasa_id, $dzien, $lekcja_nr) {
         $przedmioty = $this->sortujPrzedmiotyDlaKlasy($klasa_id);
